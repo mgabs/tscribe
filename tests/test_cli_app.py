@@ -1,4 +1,6 @@
 import stat
+import shlex
+import plistlib
 import sys
 from unittest.mock import ANY, MagicMock, patch
 
@@ -28,7 +30,11 @@ def test_cli_app_install_desktop(tmp_path):
         assert script_path.exists()
 
         content = script_path.read_text()
-        assert f"exec {sys.executable} -m tscribe.cli app" in content
+        assert shlex.split(content.splitlines()[1])[:5] == ['exec', sys.executable, '-m', 'tscribe', 'app']
+        info = plistlib.loads((app_dir / 'Contents' / 'Info.plist').read_bytes())
+        assert info['LSUIElement'] is True
+        assert info['NSMicrophoneUsageDescription']
+        assert (app_dir / 'Contents' / 'Resources' / 'AppIcon.icns').is_file()
         # Check executable permissions
         mode = script_path.stat().st_mode
         assert bool(mode & stat.S_IXUSR)

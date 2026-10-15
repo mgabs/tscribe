@@ -1204,53 +1204,17 @@ def app(diarize, install_desktop):
         raise click.ClickException("The 'app' command is only supported on macOS.")
 
     if install_desktop:
-        contents_dir = Path.home() / "Applications" / "tscribe.app" / "Contents"
-        app_dir = contents_dir / "MacOS"
-        app_dir.mkdir(parents=True, exist_ok=True)
-        script_path = app_dir / "tscribe"
-        # Executable launcher script
-        script_content = f"""#!/bin/bash
-exec {sys.executable} -m tscribe.cli app
-"""
-        script_path.write_text(script_content)
-        script_path.chmod(0o755)
+        from tscribe.desktop import install_desktop_launcher
 
-        resources_dir = contents_dir / "Resources"
-        resources_dir.mkdir(parents=True, exist_ok=True)
-        pkg_icon = Path(__file__).resolve().parent.parent.parent / "assets" / "AppIcon.icns"
-        if pkg_icon.exists():
-            import shutil
-            shutil.copy(pkg_icon, resources_dir / "AppIcon.icns")
-
-        plist_path = contents_dir / "Info.plist"
-        plist_content = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>tscribe</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.tscribe.app</string>
-    <key>CFBundleName</key>
-    <string>tscribe</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSUIElement</key>
-    <true/>
-</dict>
-</plist>
-"""
-        plist_path.write_text(plist_content)
-        click.echo(f"Installed desktop launcher: {Path.home() / 'Applications' / 'tscribe.app'}")
+        app_path = install_desktop_launcher()
+        click.echo(f"Installed desktop launcher: {app_path}")
         return
 
     from tscribe.app import TscribeApp
 
     app_instance = TscribeApp(diarize=diarize, config=_load_config())
     click.echo("Running tscribe in macOS menu bar (top-right of screen near clock).")
-    click.echo("Look for '🎙️ tscribe' in the menu bar. (Click ❌ Quit in menu to exit)")
+    click.echo("Look for the tscribe microphone icon in the menu bar.")
     app_instance.run()
 
 

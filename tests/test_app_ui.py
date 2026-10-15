@@ -1,13 +1,21 @@
 from unittest.mock import MagicMock, patch
 import pytest
+pytest.importorskip('rumps')
 from tscribe.app import AppState, TscribeApp
+
+
+@pytest.fixture(autouse=True)
+def no_native_application():
+    # Unit tests must never connect to WindowServer or change the real app.
+    with patch('AppKit.NSApplication'):
+        yield
 
 
 def test_tscribe_app_initial_state(tmp_path):
     with patch("rumps.App.__init__", return_value=None):
         app = TscribeApp(recordings_dir=tmp_path)
         assert app.controller.state == AppState.IDLE
-        assert app.title == "🎙️ tscribe"
+        assert app.title is None
         assert app.item_rec_mic.callback == app.on_record_mic
         assert app.item_rec_sys.callback == app.on_record_sys
         assert app.item_stop.callback is None
@@ -29,7 +37,7 @@ def test_tscribe_app_timer_tick(tmp_path):
 
         app.controller.state = AppState.IDLE
         app._on_timer_tick(None)
-        assert "🎙️" in app.title
+        assert app.title is None
 
 
 def test_tscribe_app_state_changes(tmp_path):

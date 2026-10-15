@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import queue
 import subprocess
 import threading
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from tscribe.config import TscribeConfig
+from tscribe.desktop import RESOURCE_DIR
 from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
 from tscribe.recorder.base import RecordingConfig, RecordingResult
 from tscribe.session import SessionManager
@@ -117,10 +119,12 @@ class TscribeController:
     def stop_recording(self) -> None:
         if self.state != AppState.RECORDING:
             return
-        self._stop_event.set()
+        # Publish the stopping state before waking the worker; otherwise a fast
+        # worker can finish and have its IDLE state overwritten by this thread.
         self.state = AppState.TRANSCRIBING
         if self.on_state_change:
             self.on_state_change(self.state)
+        self._stop_event.set()
 
     def _run_recording_and_transcription(self, use_mic: bool) -> None:
         try:
@@ -188,6 +192,16 @@ class TscribeController:
 
 
 try:
+    import objc
+    from Foundation import NSBundle
+
+    class NSBundle(objc.Category(NSBundle)):  # type: ignore[no-redef]
+        def bundleIdentifier(self):
+            return "com.tscribe.app"
+except Exception:
+    pass
+
+try:
     import rumps
 except ImportError:
     rumps = None
@@ -202,7 +216,12 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
     ):
         if rumps is None:
             raise RuntimeError("rumps is required for TscribeApp.")
-        super().__init__(name="tscribe", title="🎙️ tscribe")
+        super().__init__(
+            name="tscribe", title=None, icon=str(RESOURCE_DIR / 'menu_icon.png'),
+            template=True, quit_button=None,
+        )
+        self._events = queue.SimpleQueue()
+        self._quit_when_idle = False
         try:
             from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
             NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -210,11 +229,11 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
             pass
         if getattr(self, "_menu", None) is None:
             self._menu = rumps.rumps.Menu()
-        self.title = "🎙️ tscribe"
+        self.title = None
         self.controller = TscribeController(
             recordings_dir=recordings_dir,
-            on_state_change=self._handle_state_change,
-            on_notification=self._handle_notification,
+            on_state_change=self._on_state_change,
+            on_notification=self._on_notification,
             config=config,
         )
         if diarize is not None:
@@ -248,7 +267,10 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
             self.item_open,
             self.menu_recent,
             None,
-            rumps.MenuItem("❌ Quit tscribe", callback=rumps.quit_application),
+            rumps.MenuItem("⚙️ Open Configuration", callback=self.on_open_config),
+            rumps.MenuItem("📁 Open Recordings Folder", callback=self.on_open_recordings),
+            None,
+            rumps.MenuItem("❌ Quit tscribe", callback=self.on_quit),
         ]
 
         self.timer = rumps.Timer(self._on_timer_tick, 1)
@@ -267,7 +289,30 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
             item = rumps.MenuItem(title, callback=lambda sender, stem=s.stem: self._open_session(stem))
             self.menu_recent.add(item)
 
+    def _dispatch(self, callback, *args):
+        if threading.current_thread() is threading.main_thread():
+            callback(*args)
+        else:
+            self._events.put((callback, args))
+
+    def _on_state_change(self, state):
+        self._dispatch(self._handle_state_change, state)
+
+    def _on_notification(self, title, subtitle, message):
+        self._dispatch(self._handle_notification, title, subtitle, message)
+
     def _on_timer_tick(self, _):
+        # rumps.Timer fires on the Cocoa run loop. Native menus and notifications
+        # must only be touched here or from a main-thread menu callback.
+        while True:
+            try:
+                callback, args = self._events.get_nowait()
+            except queue.Empty:
+                break
+            callback(*args)
+        if self._quit_when_idle and self.controller.state == AppState.IDLE:
+            rumps.quit_application()
+            return
         if self.controller.state == AppState.RECORDING:
             elapsed = self.controller.elapsed_seconds()
             self.title = (
@@ -277,9 +322,10 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
         elif self.controller.state == AppState.TRANSCRIBING:
             self.title = "⏳ Transcribing..."
         else:
-            self.title = "🎙️ tscribe"
+            self.title = None
 
     def _handle_state_change(self, state: AppState):
+        self.item_diarize.set_callback(self.on_toggle_diarize if state == AppState.IDLE else None)
         if state == AppState.RECORDING:
             self.item_rec_mic.set_callback(None)
             self.item_rec_sys.set_callback(None)
@@ -300,15 +346,26 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
         if rumps is not None:
             try:
                 rumps.notification(title, subtitle, message)
-                return
             except Exception:
                 pass
-        full_msg = f"{subtitle}\n{message}".strip() if subtitle else message
-        try:
-            cmd = ["osascript", "-e", f'display notification "{full_msg}" with title "{title}"']
-            subprocess.run(cmd, check=False)
-        except Exception:
-            pass
+
+    def on_quit(self, _):
+        if self.controller.state == AppState.IDLE:
+            rumps.quit_application()
+            return
+        self._quit_when_idle = True
+        if self.controller.state == AppState.RECORDING:
+            self.controller.stop_recording()
+        self._handle_notification("tscribe", "Finishing recording", "tscribe will quit when saving and transcription finish.")
+
+    def on_open_config(self, _):
+        path = get_config_path()
+        if not path.exists():
+            self.controller.config.save(path)
+        subprocess.run(["open", "-t", str(path)])
+
+    def on_open_recordings(self, _):
+        subprocess.run(["open", str(self.controller.mgr.recordings_dir)])
 
     def on_record_mic(self, _):
         self.controller.start_recording(use_mic=True, diarize=bool(self.item_diarize.state))
@@ -332,8 +389,10 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
     def on_copy_last(self, _):
         session = self._get_last_session()
         if session and session.txt_path and session.txt_path.exists():
-            copy_to_clipboard(session.txt_path.read_text())
-            self._handle_notification("tscribe", "", "Copied transcript to clipboard")
+            if copy_to_clipboard(session.txt_path.read_text()):
+                self._handle_notification("tscribe", "", "Copied transcript to clipboard")
+            else:
+                self._handle_notification("tscribe", "Copy failed", "Could not copy transcript to clipboard.")
 
     def on_open_last(self, _):
         session = self._get_last_session()
@@ -359,6 +418,5 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
             NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
         except Exception:
             pass
-        self._handle_notification("tscribe", "Active in Menu Bar", "Click 🎙️ tscribe near clock (top right)")
         super().run()
 

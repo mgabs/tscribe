@@ -45,3 +45,6 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-mock>=3.0",
 ]
+mac-app = [
+    "pyinstaller>=6,<7 ; sys_platform == 'darwin'",
+]
