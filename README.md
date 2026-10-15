@@ -81,11 +81,14 @@ tscribe dump
 | Command | Description |
 |---------|-------------|
 | `tscribe record` | Record system audio or microphone |
+| `tscribe app` | Launch native macOS menu bar status item app |
 | `tscribe play [REF]` | Play a recording |
 | `tscribe open [REF]` | Open transcript in default program |
 | `tscribe dump [REF]` | Print transcript to stdout |
 | `tscribe path [REF]` | Print file path of a recording artifact |
 | `tscribe transcribe [SOURCE]` | Transcribe a file, URL, or recording ref |
+| `tscribe label [REF]` | Re-label speaker names in an existing transcript |
+| `tscribe clean` | Delete old recordings and artifacts |
 | `tscribe list` | List past recordings |
 | `tscribe search <query>` | Search transcript text |
 | `tscribe devices` | List audio input devices |
@@ -98,6 +101,8 @@ REF can be `HEAD` (most recent, default), `HEAD~N` (Nth previous), or a session 
 ```bash
 tscribe record                        # System audio (default on Linux/Windows)
 tscribe record --mic                  # Record from microphone
+tscribe record --diarize              # Auto-diarize speakers
+tscribe record --diarize --names "Alice,Bob" # Assign custom speaker names
 tscribe record --device 56            # Specific device (see tscribe devices)
 tscribe record --no-transcribe        # Skip auto-transcription
 tscribe record -o meeting.wav         # Custom output path
@@ -143,6 +148,8 @@ cat $(tscribe path)                   # Use in scripts
 
 ```bash
 tscribe transcribe                              # Re-transcribe most recent recording
+tscribe transcribe --diarize                     # Transcribe with speaker diarization
+tscribe transcribe --diarize --names "Alice,Bob" # Assign custom names to speakers
 tscribe transcribe --model small                # Re-transcribe with a better model
 tscribe transcribe HEAD~2                       # Re-transcribe a previous recording
 tscribe transcribe audio.wav                    # Local file (base model, txt+json)
@@ -163,6 +170,92 @@ A progress bar with ETA is shown during transcription:
 ```
   ⟳ 02:30/10:00  |████████░░░░░░░░░░░░░░░░░░░░░░|  ETA 01:30
 ```
+
+### Speaker Diarization
+
+Identify who spoke when using offline Silero VAD segmentation and agglomerative clustering:
+
+```bash
+# Auto-diarize during recording
+tscribe record --diarize
+
+# Auto-diarize with known speaker count & names
+tscribe record --diarize --speakers 3 --names "Alice,Bob,Charlie"
+
+# Transcribe an existing recording or file with diarization
+tscribe transcribe HEAD --diarize
+tscribe transcribe meeting.wav --diarize --names "Alice,Bob"
+
+# Enable diarization by default
+tscribe config transcription.diarize true
+```
+
+Output formats automatically include speaker attribution:
+- **Plain text (`.txt`)**: Dialogues grouped under `[Speaker 1]:` or `[Alice]:` headings.
+- **JSON (`.json`)**: Segment entries contain a `"speaker"` key.
+- **WebVTT (`.vtt`)**: Uses native `<v Alice>...</v>` voice tags.
+- **SRT (`.srt`)**: Lines prefixed with `[Alice] ...`.
+
+### Label (Rename Speakers)
+
+Re-label speaker names in an existing transcript without re-running audio transcription or ML clustering:
+
+```bash
+# Re-label most recent transcript
+tscribe label HEAD --names "Alice,Bob"
+
+# Positional mapping: Speaker 1 -> Alice, Speaker 2 -> Bob
+tscribe label 2026-10-15-135309 --names "Alice,Bob"
+
+# Explicit index mapping: Speaker 1 -> Alice, Speaker 3 -> Charlie
+tscribe label HEAD --names "1=Alice,3=Charlie"
+```
+
+Updates `.json`, `.txt`, `.srt`, and `.vtt` artifacts in-place.
+
+### Clean
+
+Manage and remove old recording sessions and their associated artifacts (`.wav`, `.txt`, `.json`, `.meta`, `.vtt`, `.srt`):
+
+```bash
+# Clean sessions older than 30 days (prompts for confirmation)
+tscribe clean --30
+
+# Clean sessions older than N days
+tscribe clean --days 60
+
+# Clean all sessions
+tscribe clean
+
+# Preview what would be deleted without removing files
+tscribe clean --30 --dry-run
+
+# Skip confirmation prompt
+tscribe clean --30 -y
+```
+
+Reports number of deleted sessions and total disk space freed.
+
+### Menu Bar App (macOS)
+
+`tscribe` includes a native macOS status bar application powered by `rumps`:
+
+```bash
+# Launch menu bar app
+tscribe app
+
+# Launch with speaker diarization enabled by default
+tscribe app --diarize
+
+# Install standalone ~/Applications/tscribe.app launcher (for Spotlight & Dock)
+tscribe app --install-desktop
+```
+
+Features:
+- **Click-to-Record:** Start and stop Microphone or System Audio recordings from the status bar.
+- **Live Status:** Menu bar icon updates with elapsed recording time (`🔴 00:15`) and transcribing status (`⏳ Transcribing...`).
+- **One-Click Actions:** Copy last transcript directly to macOS clipboard, open in default editor, or browse the last 5 sessions.
+- **Native Notifications:** Sends macOS banner alert with preview text when transcription finishes.
 
 ### List
 
@@ -276,8 +369,9 @@ Each recording produces:
 - `.txt` — plain text transcript
 - `.json` — timestamped transcript with segments
 - `.meta` — recording metadata (device, duration, etc.)
+- `.srt` / `.vtt` — subtitles (when generated)
 
-To delete old recordings, simply remove the corresponding files from `~/.tscribe/recordings/`.
+To manage and delete old recordings, run `tscribe clean` (e.g. `tscribe clean --30` to remove sessions older than 30 days) or manually remove files from `~/.tscribe/recordings/`.
 
 ## Development
 
@@ -299,8 +393,10 @@ uv run pytest -m "not slow"
 
 ```
 src/tscribe/
+├── app.py                # macOS menu bar application (rumps)
 ├── cli.py                # Click CLI with subcommands
 ├── config.py             # TOML configuration management
+├── diarization.py        # Speaker diarization (Silero VAD + clustering)
 ├── paths.py              # Cross-platform path resolution
 ├── devices.py            # Audio device enumeration (sounddevice)
 ├── pipewire_devices.py   # PipeWire device enumeration (Linux)
