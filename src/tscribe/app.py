@@ -181,11 +181,11 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
     def __init__(self, recordings_dir: Optional[Path] = None, diarize: bool = False):
         if rumps is None:
             raise RuntimeError("rumps is required for TscribeApp.")
-        super().__init__(name="tscribe", title="🎙️")
+        super().__init__(name="tscribe", title="🎙️ tscribe")
         if getattr(self, "_menu", None) is None:
             self._menu = rumps.rumps.Menu()
         self.app = self
-        self.title = "🎙️"
+        self.title = "🎙️ tscribe"
         self.controller = TscribeController(
             recordings_dir=recordings_dir,
             on_state_change=self._handle_state_change,
@@ -246,7 +246,7 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
         elif self.controller.state == AppState.TRANSCRIBING:
             self.title = "⏳ Transcribing..."
         else:
-            self.title = "🎙️"
+            self.title = "🎙️ tscribe"
 
     def _handle_state_change(self, state: AppState):
         if state == AppState.RECORDING:

@@ -6,9 +6,8 @@ from tscribe.app import AppState, TscribeApp, TscribeController
 def test_tscribe_app_initial_state(tmp_path):
     with patch("rumps.App.__init__", return_value=None):
         app = TscribeApp(recordings_dir=tmp_path)
-        app.title = "🎙️"
         assert app.controller.state == AppState.IDLE
-        assert app.title == "🎙️"
+        assert app.title == "🎙️ tscribe"
         assert app.item_rec_mic.callback == app.on_record_mic
         assert app.item_rec_sys.callback == app.on_record_sys
         assert app.item_stop.callback is None
