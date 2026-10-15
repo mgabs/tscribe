@@ -146,6 +146,9 @@ class Transcriber:
         language: str = "auto",
         output_formats: list[str] | None = None,
         progress_callback: Callable[[float, float], None] | None = None,
+        diarize: bool = False,
+        num_speakers: int | None = None,
+        names: str | None = None,
     ) -> TranscriptResult:
         """Transcribe an audio file and write output files.
 
@@ -176,6 +179,18 @@ class Transcriber:
 
         if progress_callback and duration > 0:
             progress_callback(duration, duration)
+
+        if diarize:
+            from tscribe.diarization import (
+                Diarizer,
+                attribute_speakers,
+                parse_speaker_names,
+            )
+
+            diarizer = Diarizer()
+            speaker_turns = diarizer.diarize(audio_path, num_speakers=num_speakers)
+            name_map = parse_speaker_names(names)
+            segments = attribute_speakers(segments, speaker_turns, name_map=name_map)
 
         result = TranscriptResult(
             file=audio_path.name,
