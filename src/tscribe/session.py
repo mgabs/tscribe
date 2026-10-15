@@ -187,3 +187,69 @@ class SessionManager:
         if sort_by == "name":
             return session.stem
         return session.stem
+
+    def delete_session(self, stem: str) -> tuple[list[Path], int]:
+        """Delete all files associated with a session stem.
+
+        Returns (list_of_deleted_files, total_bytes_freed).
+        """
+        deleted: list[Path] = []
+        bytes_freed = 0
+        for f in self.recordings_dir.glob(f"{stem}.*"):
+            if f.is_file():
+                try:
+                    size = f.stat().st_size
+                    f.unlink()
+                    deleted.append(f)
+                    bytes_freed += size
+                except OSError:
+                    pass
+        return deleted, bytes_freed
+
+    def clean_sessions(
+        self,
+        older_than_days: Optional[int] = None,
+        dry_run: bool = False,
+    ) -> list[tuple[str, list[Path], int]]:
+        """Clean recording sessions.
+
+        If older_than_days is provided, only deletes sessions older than that many days.
+        Returns list of (stem, deleted_files, bytes_freed).
+        """
+        from datetime import timedelta
+
+        cutoff_date = None
+        if older_than_days is not None:
+            cutoff_date = datetime.now() - timedelta(days=older_than_days)
+
+        results: list[tuple[str, list[Path], int]] = []
+
+        for wav_path in sorted(self.recordings_dir.glob("*.wav")):
+            stem = wav_path.stem
+            session_date = None
+
+            try:
+                session_date = datetime.strptime(stem[:10], "%Y-%m-%d")
+            except (ValueError, IndexError):
+                pass
+
+            if session_date is None:
+                try:
+                    mtime = wav_path.stat().st_mtime
+                    session_date = datetime.fromtimestamp(mtime)
+                except OSError:
+                    continue
+
+            if cutoff_date is not None and session_date > cutoff_date:
+                continue
+
+            session_files = [f for f in self.recordings_dir.glob(f"{stem}.*") if f.is_file()]
+            total_size = sum(f.stat().st_size for f in session_files if f.exists())
+
+            if dry_run:
+                results.append((stem, session_files, total_size))
+            else:
+                deleted, freed = self.delete_session(stem)
+                results.append((stem, deleted, freed))
+
+        return results

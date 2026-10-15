@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 
+from pathlib import Path
 import click
 
 from tscribe import __version__
@@ -1128,3 +1129,53 @@ def config(key, value, list_all):
         raise click.ClickException(str(e))
     cfg.save(config_path)
     click.echo(f"Set {key} = {cfg.get(key)!r}")
+
+
+@main.command()
+@click.option("--days", type=int, default=None, help="Delete sessions older than N days.")
+@click.option("--30", "days_30", is_flag=True, help="Shortcut for --days 30.")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
+@click.option("--dry-run", is_flag=True, help="Preview sessions to be deleted without removing them.")
+@click.option("--dir", "custom_dir", type=click.Path(path_type=Path), default=None, hidden=True)
+def clean(days, days_30, yes, dry_run, custom_dir):
+    """Clean old recordings and artifacts."""
+    from tscribe.config import TscribeConfig
+    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.session import SessionManager
+
+    if custom_dir:
+        recordings_dir = Path(custom_dir)
+    else:
+        cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+        recordings_dir = get_recordings_dir(get_data_dir(cfg.storage.data_dir))
+
+    mgr = SessionManager(recordings_dir)
+    effective_days = 30 if days_30 else days
+
+    results = mgr.clean_sessions(older_than_days=effective_days, dry_run=True)
+    if not results:
+        msg = f"No sessions older than {effective_days} days found." if effective_days else "No sessions found to clean."
+        click.echo(msg)
+        return
+
+    total_bytes = sum(freed for _, _, freed in results)
+    mb = total_bytes / (1024 * 1024)
+    scope = f"older than {effective_days} days" if effective_days else "all"
+
+    if dry_run:
+        click.echo(f"Would delete {len(results)} session(s) ({scope}), freeing {mb:.1f} MB:")
+        for stem, files, _ in results:
+            click.echo(f"  {stem} ({len(files)} files)")
+        return
+
+    if not yes:
+        try:
+            click.confirm(f"Delete {len(results)} session(s) ({scope}), freeing {mb:.1f} MB?", abort=True)
+        except click.Abort:
+            click.echo("Aborted.")
+            return
+
+    actual_deleted = mgr.clean_sessions(older_than_days=effective_days, dry_run=False)
+    actual_freed = sum(freed for _, _, freed in actual_deleted) / (1024 * 1024)
+    click.echo(f"Deleted {len(actual_deleted)} session(s), freed {actual_freed:.1f} MB.")
+
