@@ -58,7 +58,7 @@ def test_diarize_extracts_and_clusters(tmp_path):
         (2.0, 3.5, np.ones(3200, dtype=np.float32) * -0.5),
     ]
     with patch.object(diarizer, "_extract_speech_chunks", return_value=fake_chunks):
-        turns = diarize_res = diarizer.diarize(fake_audio, num_speakers=2)
+        turns = diarizer.diarize(fake_audio, num_speakers=2)
         assert len(turns) == 2
         assert turns[0].start == 0.0
         assert turns[0].end == 1.5
