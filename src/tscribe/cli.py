@@ -409,7 +409,7 @@ def _download_audio(url, output_dir):
 @click.argument("source", default="HEAD")
 @click.option("--model", "-m", default=None, help="Whisper model size.")
 @click.option("--language", default=None, help="Language code (default: auto-detect).")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output file path.")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output path prefix (optional transcript extension).")
 @click.option("--format", "fmt", default=None, help="Output format: txt,json,srt,vtt,all")
 @click.option("--gpu/--no-gpu", default=None, help="Use GPU acceleration.")
 @click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization.")
@@ -446,6 +446,17 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
     else:
         output_formats = cfg.transcription.output_formats
 
+    from tscribe.constants import VALID_OUTPUT_FORMATS
+    invalid_formats = set(output_formats) - set(VALID_OUTPUT_FORMATS)
+    if invalid_formats:
+        raise click.ClickException(f"Unknown output formats: {', '.join(sorted(invalid_formats))}")
+    output_options = {}
+    if output:
+        output_base = Path(output).expanduser()
+        if output_base.suffix.lstrip('.') in VALID_OUTPUT_FORMATS:
+            output_base = output_base.with_suffix('')
+        output_options['output_base'] = output_base
+
     is_ref = source == "HEAD" or source.startswith("HEAD~")
     is_url = "://" in source
 
@@ -457,12 +468,10 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
         stem = session.stem
     elif is_url:
         ensure_dirs(data_dir)
-        tmp_dir = tempfile.mkdtemp(prefix="tscribe_")
-        downloaded = _download_audio(source, tmp_dir)
-
-        # Import into recordings directory so it appears in tscribe list
         mgr = SessionManager(get_recordings_dir(data_dir))
-        stem, audio_path = mgr.import_external(downloaded)
+        with tempfile.TemporaryDirectory(prefix="tscribe_") as tmp_dir:
+            downloaded = _download_audio(source, tmp_dir)
+            stem, audio_path = mgr.import_external(downloaded)
 
         # Create metadata from the WAV file
         duration = 0.0
@@ -529,6 +538,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
         diarize=should_diarize,
         num_speakers=speakers,
         names=names,
+        **output_options,
     )
     click.echo()
 
@@ -538,7 +548,8 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
 
     click.echo(f"Transcription complete: {len(result.segments)} segments.")
     for fmt_name in output_formats:
-        out_path = audio_path.with_suffix(f".{fmt_name}")
+        base = output_options.get("output_base", audio_path.with_suffix(""))
+        out_path = Path(f"{base}.{fmt_name}")
         if out_path.exists():
             click.echo(f"  {out_path}")
 
@@ -556,7 +567,7 @@ def _stem_date_str(stem: str) -> str:
     from datetime import datetime
 
     try:
-        dt = datetime.strptime(stem, "%Y-%m-%d-%H%M%S")
+        dt = datetime.strptime(stem[:17], "%Y-%m-%d-%H%M%S")
         day = dt.strftime("%a")[:2]
         return f"{stem} {day}"
     except ValueError:

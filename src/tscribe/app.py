@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import logging
 import queue
 import subprocess
 import threading
@@ -40,6 +41,7 @@ class AppState(str, enum.Enum):
     IDLE = "IDLE"
     RECORDING = "RECORDING"
     TRANSCRIBING = "TRANSCRIBING"
+    SAVING = "SAVING"
 
 
 def format_elapsed_time(seconds: float) -> str:
@@ -121,7 +123,7 @@ class TscribeController:
             return
         # Publish the stopping state before waking the worker; otherwise a fast
         # worker can finish and have its IDLE state overwritten by this thread.
-        self.state = AppState.TRANSCRIBING
+        self.state = AppState.TRANSCRIBING if self.config.recording.auto_transcribe else AppState.SAVING
         if self.on_state_change:
             self.on_state_change(self.state)
         self._stop_event.set()
@@ -130,7 +132,7 @@ class TscribeController:
         try:
             recorder = AudioRecorder()
             defaults = self.config.recording
-            device = defaults.default_device or None
+            device = (defaults.default_device or None) if use_mic else None
             if device and device.isdigit():
                 device = int(device)
             cfg = RecordingConfig(
@@ -183,6 +185,7 @@ class TscribeController:
                 self.on_notification("tscribe", f"Recording Finished ({dur_str})", preview)
 
         except Exception as e:
+            logging.exception("Recording or transcription failed")
             if self.on_notification:
                 self.on_notification("tscribe", "Error", str(e))
         finally:
@@ -191,15 +194,28 @@ class TscribeController:
                 self.on_state_change(self.state)
 
 
-try:
-    import objc
-    from Foundation import NSBundle
+def _ensure_python_bundle_id() -> None:
+    try:
+        plist_path = Path(sys.executable).parent / "Info.plist"
+        if not plist_path.exists():
+            plist_path.write_text(
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+                '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+                '<plist version="1.0">\n'
+                '<dict>\n'
+                '    <key>CFBundleIdentifier</key>\n'
+                '    <string>com.tscribe.app</string>\n'
+                '    <key>CFBundleName</key>\n'
+                '    <string>tscribe</string>\n'
+                '</dict>\n'
+                '</plist>\n'
+            )
+    except Exception:
+        pass
 
-    class NSBundle(objc.Category(NSBundle)):  # type: ignore[no-redef]
-        def bundleIdentifier(self):
-            return "com.tscribe.app"
-except Exception:
-    pass
+
+_ensure_python_bundle_id()
 
 try:
     import rumps
@@ -321,6 +337,8 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
             )
         elif self.controller.state == AppState.TRANSCRIBING:
             self.title = "⏳ Transcribing..."
+        elif self.controller.state == AppState.SAVING:
+            self.title = "Saving..."
         else:
             self.title = None
 
@@ -330,7 +348,7 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
             self.item_rec_mic.set_callback(None)
             self.item_rec_sys.set_callback(None)
             self.item_stop.set_callback(self.on_stop)
-        elif state == AppState.TRANSCRIBING:
+        elif state in (AppState.TRANSCRIBING, AppState.SAVING):
             self.item_rec_mic.set_callback(None)
             self.item_rec_sys.set_callback(None)
             self.item_stop.set_callback(None)

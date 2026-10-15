@@ -149,6 +149,7 @@ class Transcriber:
         diarize: bool = False,
         num_speakers: int | None = None,
         names: str | None = None,
+        output_base: Path | None = None,
     ) -> TranscriptResult:
         """Transcribe an audio file and write output files.
 
@@ -199,7 +200,7 @@ class Transcriber:
             segments=segments,
         )
 
-        base_path = audio_path.with_suffix("")
+        base_path = output_base if output_base is not None else audio_path.with_suffix("")
         self._write_outputs(result, base_path, output_formats)
 
         return result
@@ -208,30 +209,35 @@ class Transcriber:
         self, result: TranscriptResult, base_path: Path, formats: list[str]
     ) -> None:
         """Write output files in the requested formats."""
+        from tscribe.constants import VALID_OUTPUT_FORMATS
+
+        invalid = set(formats) - set(VALID_OUTPUT_FORMATS)
+        if invalid:
+            raise ValueError(f"Unknown output formats: {', '.join(sorted(invalid))}")
+        base_path.parent.mkdir(parents=True, exist_ok=True)
         for fmt in formats:
+            output_path = Path(f"{base_path}.{fmt}")
             if fmt == "txt":
-                base_path.with_suffix(".txt").write_text(result.to_txt())
+                output_path.write_text(result.to_txt(), encoding="utf-8")
             elif fmt == "json":
-                base_path.with_suffix(".json").write_text(
-                    json.dumps(result.to_json(), indent=2)
+                output_path.write_text(
+                    json.dumps(result.to_json(), indent=2), encoding="utf-8"
                 )
             elif fmt == "srt":
-                base_path.with_suffix(".srt").write_text(result.to_srt())
+                output_path.write_text(result.to_srt(), encoding="utf-8")
             elif fmt == "vtt":
-                base_path.with_suffix(".vtt").write_text(result.to_vtt())
+                output_path.write_text(result.to_vtt(), encoding="utf-8")
 
 
 def _format_srt_time(seconds: float) -> str:
     """Format seconds as SRT timestamp: HH:MM:SS,mmm"""
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = seconds % 60
-    return f"{h:02d}:{m:02d}:{s:06.3f}".replace(".", ",")
+    return _format_vtt_time(seconds).replace(".", ",")
 
 
 def _format_vtt_time(seconds: float) -> str:
-    """Format seconds as VTT timestamp: HH:MM:SS.mmm"""
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = seconds % 60
-    return f"{h:02d}:{m:02d}:{s:06.3f}"
+    """Format seconds as VTT timestamp: HH:MM:SS.mmm."""
+    milliseconds = max(0, round(seconds * 1000))
+    total_seconds, ms = divmod(milliseconds, 1000)
+    total_minutes, sec = divmod(total_seconds, 60)
+    hours, minute = divmod(total_minutes, 60)
+    return f"{hours:02d}:{minute:02d}:{sec:02d}.{ms:03d}"

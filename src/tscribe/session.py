@@ -31,8 +31,8 @@ class SessionManager:
         self.recordings_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_session_stem(self) -> str:
-        """Generate a timestamp-based session name: YYYY-MM-DD-HHMMSS."""
-        return datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        """Include microseconds so rapid CLI/app recordings do not share a name."""
+        return datetime.now().strftime("%Y-%m-%d-%H%M%S-%f")
 
     def create_metadata(self, result: RecordingResult, **extra) -> dict:
         """Build metadata dict from a recording result."""

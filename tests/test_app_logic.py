@@ -209,3 +209,14 @@ def test_controller_skips_auto_transcription(tmp_path):
         transcriber.assert_not_called()
     assert controller.current_wav.with_suffix('.meta').exists()
     assert controller.state == AppState.IDLE
+
+
+def test_stop_publishes_state_before_waking_worker(tmp_path):
+    controller = TscribeController(recordings_dir=tmp_path)
+    controller.state = AppState.RECORDING
+    def finish_immediately():
+        controller.state = AppState.IDLE
+    controller._stop_event = MagicMock()
+    controller._stop_event.set.side_effect = finish_immediately
+    controller.stop_recording()
+    assert controller.state == AppState.IDLE

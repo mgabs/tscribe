@@ -49,9 +49,16 @@ class SounddeviceRecorder(Recorder):
 
         device = self._resolve_device(config)
 
-        # Use the device's native sample rate for compatibility
-        dev_info = sd.query_devices(device or sd.default.device[0], kind="input")
-        sample_rate = int(dev_info["default_samplerate"])
+        dev_info = sd.query_devices(device if device is not None else sd.default.device[0], kind="input")
+        sample_rate = config.sample_rate
+        try:
+            sd.check_input_settings(
+                device=device, channels=config.channels,
+                dtype=config.dtype, samplerate=sample_rate,
+            )
+        except sd.PortAudioError:
+            # Virtual loopback devices may only accept their native rate.
+            sample_rate = int(dev_info["default_samplerate"])
 
         self._config = config
         self._actual_sample_rate = sample_rate
@@ -73,14 +80,22 @@ class SounddeviceRecorder(Recorder):
                     peak = float(np.max(np.abs(indata.astype(np.float32)))) / 32768.0
                     self._level = peak
 
-        self._stream = sd.InputStream(
-            samplerate=sample_rate,
-            channels=config.channels,
-            dtype=config.dtype,
-            device=device,
-            callback=callback,
-        )
-        self._stream.start()
+        try:
+            self._stream = sd.InputStream(
+                samplerate=sample_rate,
+                channels=config.channels,
+                dtype=config.dtype,
+                device=device,
+                callback=callback,
+            )
+            self._stream.start()
+        except Exception:
+            if self._stream is not None:
+                self._stream.close()
+                self._stream = None
+            self._wav_file.close()
+            self._wav_file = None
+            raise
         self._start_time = time.monotonic()
         self._recording = True
 
@@ -98,7 +113,7 @@ class SounddeviceRecorder(Recorder):
             self._wav_file = None
 
         duration = self._frames_written / self._actual_sample_rate
-        device_name = str(self._config.device or "default")
+        device_name = str(self._config.device if self._config.device is not None else "default")
         source_type = "loopback" if self._config.loopback else "microphone"
 
         return RecordingResult(

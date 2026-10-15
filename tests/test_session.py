@@ -212,3 +212,17 @@ class TestImportExternal:
         assert dest.exists()
         assert dest.parent == session_mgr.recordings_dir
         assert re.match(r"\d{4}-\d{2}-\d{2}-\d{6}", stem)
+
+
+def test_session_stems_distinguish_recordings_in_same_second(session_mgr):
+    from datetime import datetime
+    from unittest.mock import patch
+    first = datetime(2026, 10, 15, 12, 0, 0, 1)
+    second = datetime(2026, 10, 15, 12, 0, 0, 2)
+    with patch('tscribe.session.datetime') as clock:
+        clock.now.side_effect = [first, second]
+        one = session_mgr.generate_session_stem()
+        two = session_mgr.generate_session_stem()
+    assert one != two
+    assert one.startswith('2026-10-15-120000')
+    assert two.startswith('2026-10-15-120000')

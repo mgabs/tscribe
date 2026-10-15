@@ -890,3 +890,23 @@ def test_config_invalid_file_readable_error(tmp_path):
     assert result.exit_code != 0
     assert 'Cannot load config' in result.output
     assert str(path) in result.output
+
+
+def test_transcribe_passes_custom_output_prefix(tmp_path):
+    audio = tmp_path / 'meeting.wav'
+    audio.write_bytes(b'fake')
+    with patch('tscribe.transcriber.Transcriber') as transcriber:
+        transcriber.return_value.transcribe.return_value.segments = []
+        result = CliRunner().invoke(main, [
+            'transcribe', str(audio), '--output', str(tmp_path / 'exports' / 'notes.txt'), '--format', 'txt',
+        ])
+        assert result.exit_code == 0
+        assert transcriber.return_value.transcribe.call_args.kwargs['output_base'] == tmp_path / 'exports' / 'notes'
+
+
+def test_transcribe_rejects_unknown_formats_before_model_load(tmp_path):
+    with patch('tscribe.transcriber.Transcriber') as transcriber:
+        result = CliRunner().invoke(main, ['transcribe', 'HEAD', '--format', 'bogus'])
+        assert result.exit_code != 0
+        assert 'Unknown output formats' in result.output
+        transcriber.assert_not_called()

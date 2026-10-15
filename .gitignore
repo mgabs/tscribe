@@ -18,3 +18,5 @@ htmlcov/
 .private/
 mutants/
 .mutmut-cache
+
+!packaging/macos/*.spec

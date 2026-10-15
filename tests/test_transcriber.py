@@ -214,3 +214,35 @@ class TestProgressCallback:
 
         result = t.transcribe(audio_path, output_formats=["txt"])
         assert len(result.segments) == 1
+
+
+@pytest.mark.parametrize(('seconds', 'expected'), [
+    (59.9996, '00:01:00.000'),
+    (3599.9996, '01:00:00.000'),
+    (60, '00:01:00.000'),
+])
+def test_subtitle_timestamps_carry_rounded_milliseconds(seconds, expected):
+    assert _format_vtt_time(seconds) == expected
+    assert _format_srt_time(seconds) == expected.replace('.', ',')
+
+
+def test_transcribe_custom_output_preserves_dotted_names(tmp_path):
+    audio = tmp_path / 'meeting.v2.wav'
+    audio.write_bytes(b'fake')
+    transcriber = Transcriber()
+    transcriber._model = _mock_whisper_model()
+    output = tmp_path / 'exports' / 'notes.v2'
+    transcriber.transcribe(audio, output_formats=['txt', 'json'], output_base=output)
+    assert (tmp_path / 'exports' / 'notes.v2.txt').exists()
+    assert (tmp_path / 'exports' / 'notes.v2.json').exists()
+    assert not audio.with_suffix('.txt').exists()
+
+
+def test_default_output_preserves_dotted_names(tmp_path):
+    audio = tmp_path / 'meeting.v2.wav'
+    audio.write_bytes(b'fake')
+    transcriber = Transcriber()
+    transcriber._model = _mock_whisper_model()
+    transcriber.transcribe(audio, output_formats=['txt'])
+    assert (tmp_path / 'meeting.v2.txt').exists()
+    assert not (tmp_path / 'meeting.txt').exists()

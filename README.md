@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/-Python-3776AB?style=flat-square&logo=python&logoColor=white)
 ![CLI](https://img.shields.io/badge/-CLI-000000?style=flat-square&logo=gnu-bash&logoColor=white)
 
-Cross-platform CLI tool for recording audio and transcribing it to text using [faster-whisper](https://github.com/SYSTRAN/faster-whisper). Runs on modest hardware — no GPU required, but GPU acceleration is supported.
+Cross-platform CLI and native macOS menu bar app for recording audio and transcribing it to text using [faster-whisper](https://github.com/SYSTRAN/faster-whisper). Runs on modest hardware — no GPU required, but GPU acceleration is supported.
 
 > **Note:** This project is a fork of [johnrobinsn/tscribe](https://github.com/johnrobinsn/tscribe.git).
 
@@ -173,7 +173,9 @@ A progress bar with ETA is shown during transcription:
 
 ### Speaker Diarization
 
-Identify who spoke when using offline Silero VAD segmentation and agglomerative clustering:
+Experimental speaker grouping using offline Silero VAD segmentation and
+agglomerative clustering. The current amplitude-histogram method is a heuristic,
+not a voice-embedding model, and may confuse speakers or recording conditions:
 
 ```bash
 # Auto-diarize during recording
@@ -238,7 +240,9 @@ Reports number of deleted sessions and total disk space freed.
 
 ### Menu Bar App (macOS)
 
-`tscribe` includes a native macOS status bar application powered by `rumps`:
+`tscribe` includes a native macOS menu bar application powered by `rumps`.
+A self-contained `.app` build includes Python and its dependencies; see
+[building and distributing the macOS app](docs/macos-app.md).
 
 ```bash
 # Launch menu bar app
@@ -247,15 +251,17 @@ tscribe app
 # Launch with speaker diarization enabled by default
 tscribe app --diarize
 
-# Install standalone ~/Applications/tscribe.app launcher (for Spotlight & Dock)
+# Install a lightweight Finder launcher (requires this Python installation)
 tscribe app --install-desktop
 ```
 
 Features:
 - **Click-to-Record:** Start and stop Microphone or System Audio recordings from the status bar.
-- **Live Status:** Menu bar icon updates with elapsed recording time (`🔴 00:15`) and transcribing status (`⏳ Transcribing...`).
+- **Live Status:** Packaged microphone icon with elapsed recording time (`🔴 00:15`) and transcription status (`⏳ Transcribing...`).
 - **One-Click Actions:** Copy last transcript directly to macOS clipboard, open in default editor, or browse the last 5 sessions.
 - **Native Notifications:** Sends macOS banner alert with preview text when transcription finishes.
+- **Safe Quit:** Finishes saving and automatic transcription before exiting.
+- **Shared Settings:** Open configuration and recordings directly from the menu.
 
 ### List
 

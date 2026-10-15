@@ -162,3 +162,53 @@ def test_app_explicit_diarize_overrides_config(tmp_path):
     with patch('rumps.App.__init__', return_value=None):
         app = TscribeApp(recordings_dir=tmp_path, diarize=False, config=config)
         assert app.item_diarize.state == 0
+
+
+def test_background_updates_wait_for_main_loop(tmp_path):
+    import threading
+    with patch('rumps.App.__init__', return_value=None):
+        app = TscribeApp(recordings_dir=tmp_path)
+        with patch.object(app, '_handle_notification') as notify, patch.object(app, '_handle_state_change') as state:
+            def worker():
+                app._on_notification('tscribe', 'Done', 'Hello')
+                app._on_state_change(AppState.IDLE)
+            thread = threading.Thread(target=worker)
+            thread.start()
+            thread.join()
+            notify.assert_not_called()
+            state.assert_not_called()
+            app._on_timer_tick(None)
+            notify.assert_called_once_with('tscribe', 'Done', 'Hello')
+            state.assert_called_once_with(AppState.IDLE)
+
+
+def test_quit_waits_for_recording_to_finish(tmp_path):
+    with patch('rumps.App.__init__', return_value=None), patch('rumps.quit_application') as quit_app:
+        app = TscribeApp(recordings_dir=tmp_path)
+        app.controller.state = AppState.RECORDING
+        with patch.object(app.controller, 'stop_recording') as stop, patch.object(app, '_handle_notification'):
+            app.on_quit(None)
+            stop.assert_called_once()
+            quit_app.assert_not_called()
+        app.controller.state = AppState.IDLE
+        app._on_timer_tick(None)
+        quit_app.assert_called_once()
+
+
+def test_menu_bar_uses_packaged_icon(tmp_path):
+    from pathlib import Path
+    with patch('rumps.App.__init__', return_value=None) as initialize:
+        TscribeApp(recordings_dir=tmp_path)
+        kwargs = initialize.call_args.kwargs
+        assert Path(kwargs['icon']).is_file()
+        assert kwargs['template'] is True
+        assert kwargs['quit_button'] is None
+
+
+
+def test_notification_errors_do_not_invoke_script_editor(tmp_path):
+    with patch('rumps.App.__init__', return_value=None):
+        app = TscribeApp(recordings_dir=tmp_path)
+        with patch('rumps.notification', side_effect=RuntimeError), patch('subprocess.run') as run:
+            app._handle_notification('tscribe', 'Done', 'He said "hello".')
+            run.assert_not_called()
