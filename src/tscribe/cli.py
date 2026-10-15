@@ -1179,3 +1179,32 @@ def clean(days, days_30, yes, dry_run, custom_dir):
     actual_freed = sum(freed for _, _, freed in actual_deleted) / (1024 * 1024)
     click.echo(f"Deleted {len(actual_deleted)} session(s), freed {actual_freed:.1f} MB.")
 
+
+@main.command()
+@click.option("--diarize/--no-diarize", default=False, help="Enable speaker diarization by default.")
+@click.option("--install-desktop", is_flag=True, help="Create ~/Applications/tscribe.app launcher.")
+def app(diarize, install_desktop):
+    """Launch macOS menu bar status item app."""
+    if sys.platform != "darwin":
+        raise click.ClickException("The 'app' command is only supported on macOS.")
+
+    if install_desktop:
+        app_dir = Path.home() / "Applications" / "tscribe.app" / "Contents" / "MacOS"
+        app_dir.mkdir(parents=True, exist_ok=True)
+        script_path = app_dir / "tscribe"
+        # Executable launcher script
+        script_content = f"""#!/bin/bash
+exec {sys.executable} -m tscribe.cli app
+"""
+        script_path.write_text(script_content)
+        script_path.chmod(0o755)
+        click.echo(f"Installed desktop launcher: {Path.home() / 'Applications' / 'tscribe.app'}")
+        return
+
+    from tscribe.app import TscribeApp
+
+    app_instance = TscribeApp(diarize=diarize)
+    click.echo("Running tscribe in macOS menu bar... (Click ❌ Quit in menu to exit)")
+    app_instance.run()
+
+
