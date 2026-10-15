@@ -16,3 +16,5 @@ htmlcov/
 *.wav
 !tests/fixtures/*.wav
 .private/
+mutants/
+.mutmut-cache

@@ -1,7 +1,6 @@
 """Tests for the transcriber module."""
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

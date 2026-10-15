@@ -82,11 +82,7 @@ def attribute_speakers(
 
 
 class Diarizer:
-    """Offline speaker diarization using VAD, ONNX embeddings, and Agglomerative Clustering."""
-
-    def __init__(self, model_path: Path | None = None):
-        self._model_path = model_path
-        self._session = None
+    """Offline speaker diarization using VAD, amplitude histograms, and clustering."""
 
     def _cluster_embeddings(
         self,
@@ -161,11 +157,10 @@ class Diarizer:
         if not chunks:
             return []
 
-        # If embedding model is available, use ONNX session; otherwise fall back to Mel energy signature
+        # Represent each speech chunk by its amplitude distribution.
         timestamps = [(c[0], c[1]) for c in chunks]
         embeddings = []
         for _, _, data in chunks:
-            # Simple 80-bin mel energy proxy when model is not yet loaded, or onnx embedding inference
             hist, _ = np.histogram(data, bins=64, range=(-1.0, 1.0))
             embeddings.append(hist.astype(np.float32))
 

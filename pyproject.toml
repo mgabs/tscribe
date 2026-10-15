@@ -32,8 +32,15 @@ testpaths = ["tests"]
 markers = ["slow: marks tests as slow (requires model download)"]
 addopts = "--tb=short -m 'not slow'"
 
+[tool.mutmut]
+source_paths = ["src/"]
+only_mutate = ["src/tscribe/config.py", "src/tscribe/paths.py"]
+pytest_add_cli_args_test_selection = ["tests/test_config.py", "tests/test_paths.py"]
+use_setproctitle = false
+
 [dependency-groups]
 dev = [
+    "mutmut>=3.8,<4",
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-mock>=3.0",

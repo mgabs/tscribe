@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 import pytest
-from tscribe.app import AppState, TscribeApp, TscribeController
+from tscribe.app import AppState, TscribeApp
 
 
 def test_tscribe_app_initial_state(tmp_path):
@@ -123,3 +123,34 @@ def test_tscribe_app_run(tmp_path):
         app.run()
         mock_run.assert_called_once()
 
+
+
+def test_app_config_preferences(tmp_path):
+    from tscribe.config import TscribeConfig
+    config = TscribeConfig()
+    config.app.notifications = False
+    config.app.recent_limit = 12
+    config.app.show_elapsed_time = False
+    config.transcription.diarize = True
+    with patch('rumps.App.__init__', return_value=None):
+        app = TscribeApp(recordings_dir=tmp_path, config=config)
+        assert app.item_diarize.state == 1
+        with patch.object(app.controller.mgr, 'list_sessions', return_value=[]) as sessions:
+            app._refresh_recent_menu()
+            sessions.assert_called_once_with(limit=12, sort_by='date')
+        app.controller.state = AppState.RECORDING
+        app._on_timer_tick(None)
+        assert app.title == '🔴 Recording'
+        with patch('rumps.notification') as notify, patch('subprocess.run') as run:
+            app._handle_notification('title', 'subtitle', 'message')
+            notify.assert_not_called()
+            run.assert_not_called()
+
+
+def test_app_explicit_diarize_overrides_config(tmp_path):
+    from tscribe.config import TscribeConfig
+    config = TscribeConfig()
+    config.transcription.diarize = True
+    with patch('rumps.App.__init__', return_value=None):
+        app = TscribeApp(recordings_dir=tmp_path, diarize=False, config=config)
+        assert app.item_diarize.state == 0

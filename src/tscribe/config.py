@@ -48,10 +48,18 @@ class StorageDefaults:
 
 
 @dataclass
+class AppDefaults:
+    notifications: bool = True
+    recent_limit: int = 5
+    show_elapsed_time: bool = True
+
+
+@dataclass
 class TscribeConfig:
     recording: RecordingDefaults = field(default_factory=RecordingDefaults)
     transcription: TranscriptionDefaults = field(default_factory=TranscriptionDefaults)
     storage: StorageDefaults = field(default_factory=StorageDefaults)
+    app: AppDefaults = field(default_factory=AppDefaults)
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> TscribeConfig:
@@ -63,20 +71,16 @@ class TscribeConfig:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
 
-        if "recording" in data:
-            for k, v in data["recording"].items():
-                if hasattr(config.recording, k):
-                    setattr(config.recording, k, v)
-
-        if "transcription" in data:
-            for k, v in data["transcription"].items():
-                if hasattr(config.transcription, k):
-                    setattr(config.transcription, k, v)
-
-        if "storage" in data:
-            for k, v in data["storage"].items():
-                if hasattr(config.storage, k):
-                    setattr(config.storage, k, v)
+        for section_field in fields(config):
+            section = section_field.name
+            values = data.get(section, {})
+            if not isinstance(values, dict):
+                raise ValueError(f"Config section {section!r} must be a table")
+            obj = getattr(config, section)
+            known = {f.name for f in fields(obj)}
+            for key, value in values.items():
+                if key in known:
+                    config.set(f"{section}.{key}", value)
 
         return config
 
@@ -93,9 +97,9 @@ class TscribeConfig:
         if not name:
             raise KeyError(f"Invalid key format: {key!r}. Use 'section.key' (e.g., 'recording.sample_rate')")
         obj = getattr(self, section, None)
-        if obj is None:
+        if section not in {f.name for f in fields(self)}:
             raise KeyError(f"Unknown config section: {section!r}")
-        if not hasattr(obj, name):
+        if name not in {f.name for f in fields(obj)}:
             raise KeyError(f"Unknown config key: {key!r}")
         return getattr(obj, name)
 
@@ -105,14 +109,16 @@ class TscribeConfig:
         if not name:
             raise KeyError(f"Invalid key format: {key!r}. Use 'section.key' (e.g., 'recording.sample_rate')")
         obj = getattr(self, section, None)
-        if obj is None:
+        if section not in {f.name for f in fields(self)}:
             raise KeyError(f"Unknown config section: {section!r}")
-        if not hasattr(obj, name):
+        if name not in {f.name for f in fields(obj)}:
             raise KeyError(f"Unknown config key: {key!r}")
 
         # Coerce value to match the field type
         current = getattr(obj, name)
         coerced = _coerce_value(value, current, key)
+        if type(coerced) is not type(current):
+            raise ValueError(f"{key} must be {type(current).__name__}")
         _validate_value(key, coerced)
         setattr(obj, name, coerced)
 
@@ -149,6 +155,8 @@ def _validate_value(key: str, value: Any) -> None:
     if key == "transcription.model" and value not in VALID_MODELS:
         raise ValueError(f"Invalid model: {value!r}. Choose from: {', '.join(VALID_MODELS)}")
     if key == "transcription.output_formats":
+        if not value:
+            raise ValueError("output_formats must contain at least one format")
         for fmt in value:
             if fmt not in VALID_OUTPUT_FORMATS:
                 raise ValueError(f"Invalid output format: {fmt!r}. Choose from: {', '.join(VALID_OUTPUT_FORMATS)}")
@@ -156,3 +164,5 @@ def _validate_value(key: str, value: Any) -> None:
         raise ValueError(f"sample_rate must be positive, got {value}")
     if key == "recording.channels" and value <= 0:
         raise ValueError(f"channels must be positive, got {value}")
+    if key == "app.recent_limit" and value <= 0:
+        raise ValueError(f"recent_limit must be positive, got {value}")

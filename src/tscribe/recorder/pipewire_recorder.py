@@ -32,7 +32,6 @@ class PipewireRecorder(Recorder):
         self._lock = threading.Lock()
         self._level_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
-        self._actual_sample_rate: int = 16000
         self._actual_channels: int = 1
 
     def start(self, output_path: Path, config: RecordingConfig) -> None:
@@ -63,7 +62,6 @@ class PipewireRecorder(Recorder):
                 if info:
                     channels = info["channels"]
 
-        self._actual_sample_rate = sample_rate
         self._actual_channels = channels
 
         cmd = [

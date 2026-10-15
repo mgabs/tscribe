@@ -1,7 +1,6 @@
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 from tscribe.diarization import SpeakerTurn
-from tscribe.transcriber import Transcriber, TranscriptResult, TranscriptSegment
+from tscribe.transcriber import Transcriber
 
 
 def test_transcriber_diarize_flow(tmp_path):

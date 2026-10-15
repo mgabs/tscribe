@@ -272,8 +272,7 @@ def record(device, loopback, output, no_transcribe, sample_rate, channels, diari
     """Record audio from system audio (default) or microphone."""
     from pathlib import Path
 
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import ensure_dirs, get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import ensure_dirs, get_data_dir, get_recordings_dir
     from tscribe.recorder import RecordingConfig
     from tscribe.session import SessionManager
 
@@ -393,11 +392,10 @@ def _download_audio(url, output_dir):
         "no_warnings": True,
     }
 
-    click.echo(f"Downloading audio from URL...")
+    click.echo("Downloading audio from URL...")
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
 
-    title = info.get("title", "audio")
     # yt-dlp replaces special chars in filenames; use the prepared filename
     wav_path = Path(ydl.prepare_filename(info)).with_suffix(".wav")
     if not wav_path.exists():
@@ -430,8 +428,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
     import wave
     from pathlib import Path
 
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import ensure_dirs, get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import ensure_dirs, get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
     from tscribe.transcriber import Transcriber
 
@@ -574,8 +571,7 @@ def _stem_date_str(stem: str) -> str:
 @click.option("--no-header", is_flag=True, help="Omit table header.")
 def list_recordings(limit, search, sort_by, no_header):
     """List past recordings and their transcription status."""
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
     cfg = _load_config()
@@ -630,8 +626,7 @@ def search(query, limit, sort_by):
       tscribe search "action items"
       tscribe search meeting -n 50
     """
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
     cfg = _load_config()
@@ -814,8 +809,7 @@ def play(ref):
       tscribe play HEAD~1     Play previous recording
       tscribe play 2025-01-15-143022   Play by session ID
     """
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
     cfg = _load_config()
@@ -836,8 +830,7 @@ def play(ref):
 
 def _resolve_transcript_path(ref, fmt):
     """Resolve a session ref + optional format to a transcript file path."""
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
     cfg = _load_config()
@@ -921,8 +914,7 @@ def path(ref, fmt):
       tscribe path -f wav          Path to audio file
       tscribe path HEAD~1 -f json  Path to previous JSON transcript
     """
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
     cfg = _load_config()
@@ -945,9 +937,8 @@ def label(ref, names):
     import json
     from pathlib import Path
 
-    from tscribe.config import TscribeConfig
     from tscribe.diarization import parse_speaker_names
-    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
     from tscribe.transcriber import TranscriptResult, TranscriptSegment
 
@@ -1119,8 +1110,7 @@ def devices(loopback):
 @click.option("--edit", "edit", is_flag=True, help="Open the config file in your editor.")
 def config(key, value, list_all, show_path, initialize, edit):
     """View or set configuration."""
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import get_config_path, get_data_dir
+    from tscribe.paths import get_config_path
 
     config_path = get_config_path()
     if show_path:
@@ -1165,8 +1155,7 @@ def config(key, value, list_all, show_path, initialize, edit):
 @click.option("--dir", "custom_dir", type=click.Path(path_type=Path), default=None, hidden=True)
 def clean(days, days_30, yes, dry_run, custom_dir):
     """Clean old recordings and artifacts."""
-    from tscribe.config import TscribeConfig
-    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.paths import get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
     if custom_dir:
@@ -1259,9 +1248,13 @@ exec {sys.executable} -m tscribe.cli app
 
     from tscribe.app import TscribeApp
 
-    app_instance = TscribeApp(diarize=diarize)
+    app_instance = TscribeApp(diarize=diarize, config=_load_config())
     click.echo("Running tscribe in macOS menu bar (top-right of screen near clock).")
     click.echo("Look for '🎙️ tscribe' in the menu bar. (Click ❌ Quit in menu to exit)")
     app_instance.run()
+
+
+if __name__ == "__main__":
+    main()
 
 

@@ -140,3 +140,119 @@ def test_to_dict():
     assert d["recording"]["sample_rate"] == 16000
     assert d["transcription"]["output_formats"] == ["txt", "json"]
     assert "storage" in d
+
+
+@pytest.mark.parametrize(('key', 'value'), [
+    ('recording.sample_rate', True),
+    ('recording.channels', 1.5),
+    ('recording.default_device', 42),
+    ('transcription.gpu', 1),
+    ('transcription.output_formats', []),
+    ('app.recent_limit', 0),
+    ('app.notifications', 'invalid'),
+])
+def test_invalid_config_values(key, value):
+    with pytest.raises(ValueError):
+        TscribeConfig().set(key, value)
+
+
+@pytest.mark.parametrize('content', [
+    '[recording]\nsample_rate = -1\n',
+    'recording = false\n',
+    '[app]\nrecent_limit = 0\n',
+])
+def test_invalid_file_rejected(tmp_path, content):
+    path = tmp_path / 'config.toml'
+    path.write_text(content)
+    with pytest.raises(ValueError):
+        TscribeConfig.load(path)
+
+
+def test_app_settings_roundtrip(tmp_path):
+    config = TscribeConfig()
+    config.set('app.notifications', 'false')
+    config.set('app.recent_limit', '10')
+    config.set('app.show_elapsed_time', 'false')
+    path = tmp_path / 'config.toml'
+    config.save(path)
+    loaded = TscribeConfig.load(path)
+    assert loaded.app.notifications is False
+    assert loaded.app.recent_limit == 10
+    assert loaded.app.show_elapsed_time is False
+
+
+@pytest.mark.parametrize('value', ['true', 'TRUE', '1', 'yes', 'Yes'])
+def test_boolean_true_aliases(value):
+    config = TscribeConfig()
+    config.set('app.notifications', value)
+    assert config.app.notifications is True
+
+
+@pytest.mark.parametrize('value', ['false', 'FALSE', '0', 'no', 'No'])
+def test_boolean_false_aliases(value):
+    config = TscribeConfig()
+    config.set('app.notifications', value)
+    assert config.app.notifications is False
+
+
+@pytest.mark.parametrize('key', [
+    'recording.sample_rate', 'recording.channels', 'app.recent_limit',
+])
+def test_positive_integer_boundaries(key):
+    config = TscribeConfig()
+    config.set(key, 1)
+    assert config.get(key) == 1
+    for invalid in (0, -1):
+        with pytest.raises(ValueError, match='must be positive'):
+            config.set(key, invalid)
+        assert config.get(key) == 1
+
+
+@pytest.mark.parametrize('method', ['get', 'set'])
+@pytest.mark.parametrize(('key', 'message'), [
+    ('sample_rate', 'Invalid key format'),
+    ('recording.', 'Invalid key format'),
+    ('nonexistent.key', 'Unknown config section'),
+    ('save.key', 'Unknown config section'),
+    ('recording.nonexistent', 'Unknown config key'),
+    ('recording.sample_rate.extra', 'Unknown config key'),
+])
+def test_invalid_keys_have_actionable_errors(method, key, message):
+    config = TscribeConfig()
+    args = (key,) if method == 'get' else (key, '1')
+    with pytest.raises(KeyError, match=message):
+        getattr(config, method)(*args)
+
+
+def test_save_creates_nested_parents(tmp_path):
+    path = tmp_path / 'new' / 'settings' / 'tscribe' / 'config.toml'
+    config = TscribeConfig()
+    config.set('transcription.language', 'de')
+    config.save(path)
+    assert TscribeConfig.load(path).transcription.language == 'de'
+
+
+def test_invalid_boolean_error_identifies_key_and_value():
+    with pytest.raises(ValueError) as error:
+        TscribeConfig().set('app.notifications', 'maybe')
+    assert 'app.notifications' in str(error.value)
+    assert 'maybe' in str(error.value)
+
+
+def test_type_error_identifies_setting_and_required_type():
+    with pytest.raises(ValueError) as error:
+        TscribeConfig().set('recording.channels', 1.5)
+    assert 'recording.channels' in str(error.value)
+    assert 'int' in str(error.value)
+
+
+def test_invalid_section_error_identifies_section(tmp_path):
+    path = tmp_path / 'config.toml'
+    path.write_text('recording = false\n')
+    with pytest.raises(ValueError, match="section 'recording' must be a table"):
+        TscribeConfig.load(path)
+
+
+def test_empty_formats_error_is_actionable():
+    with pytest.raises(ValueError, match='^output_formats must contain at least one format$'):
+        TscribeConfig().set('transcription.output_formats', [])

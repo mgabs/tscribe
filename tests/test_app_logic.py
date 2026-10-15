@@ -1,11 +1,9 @@
 import subprocess
-import threading
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tscribe.app import AppState, AudioRecorder, copy_to_clipboard, format_elapsed_time, TscribeController
+from tscribe.app import AppState, copy_to_clipboard, format_elapsed_time, TscribeController
 from tscribe.recorder.base import RecordingResult
 
 
@@ -155,3 +153,59 @@ def test_controller_zero_duration_stop(tmp_path):
         # Transcriber should not be called for zero duration
         mock_transcriber_cls.return_value.transcribe.assert_not_called()
         assert any("Cancelled" in n[1] for n in notifications)
+
+
+def test_controller_uses_configured_recording_and_transcription(tmp_path):
+    from tscribe.config import TscribeConfig
+    from tscribe.transcriber import TranscriptResult, Transcriber
+
+    config = TscribeConfig()
+    config.recording.sample_rate = 48000
+    config.recording.channels = 2
+    config.recording.default_device = '7'
+    config.transcription.model = 'tiny'
+    config.transcription.language = 'de'
+    config.transcription.diarize = True
+    config.transcription.gpu = True
+    config.transcription.output_formats = ['vtt']
+    controller = TscribeController(recordings_dir=tmp_path, config=config)
+    controller.current_stem = '2026-10-15-120000'
+    controller.current_wav = tmp_path / f'{controller.current_stem}.wav'
+    result = RecordingResult(controller.current_wav, 5, 48000, 2, 'test', 'microphone')
+    write_outputs = Transcriber._write_outputs
+    transcript = TranscriptResult(str(controller.current_wav), 'tiny', 'de')
+
+    def transcribe(path, **kwargs):
+        write_outputs(None, transcript, path.with_suffix(''), kwargs['output_formats'])
+        return transcript
+
+    with patch('tscribe.app.AudioRecorder') as recorder, patch('tscribe.app.Transcriber') as transcriber:
+        recorder.return_value.record.return_value = result
+        transcriber.return_value.transcribe.side_effect = transcribe
+        controller._run_recording_and_transcription(use_mic=True)
+        recording = recorder.return_value.record.call_args.kwargs['config']
+        assert (recording.sample_rate, recording.channels, recording.device) == (48000, 2, 7)
+        transcriber.assert_called_once_with(model_name='tiny', device='cuda')
+        transcriber.return_value.transcribe.assert_called_once_with(
+            controller.current_wav, diarize=True, language='de', output_formats=['vtt'],
+        )
+    assert controller.current_wav.with_suffix('.vtt').exists()
+    assert not controller.current_wav.with_suffix('.txt').exists()
+    assert not controller.current_wav.with_suffix('.json').exists()
+    assert controller.state == AppState.IDLE
+
+
+def test_controller_skips_auto_transcription(tmp_path):
+    from tscribe.config import TscribeConfig
+    config = TscribeConfig()
+    config.recording.auto_transcribe = False
+    controller = TscribeController(recordings_dir=tmp_path, config=config)
+    controller.current_stem = '2026-10-15-120000'
+    controller.current_wav = tmp_path / f'{controller.current_stem}.wav'
+    result = RecordingResult(controller.current_wav, 5, 16000, 1, 'test', 'microphone')
+    with patch('tscribe.app.AudioRecorder') as recorder, patch('tscribe.app.Transcriber') as transcriber:
+        recorder.return_value.record.return_value = result
+        controller._run_recording_and_transcription(use_mic=True)
+        transcriber.assert_not_called()
+    assert controller.current_wav.with_suffix('.meta').exists()
+    assert controller.state == AppState.IDLE

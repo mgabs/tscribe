@@ -4,11 +4,9 @@ import json
 import sys
 import threading
 import wave
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 from click.testing import CliRunner
 
 from tscribe.cli import main
@@ -331,7 +329,6 @@ def test_list_no_header(monkeypatch, tmp_path):
 
 def _setup_recordings(tmp_path, count=2):
     """Create test recordings with sequential timestamps."""
-    import time
     rec_dir = tmp_path / "recordings"
     rec_dir.mkdir(parents=True, exist_ok=True)
     stems = []
@@ -857,3 +854,39 @@ def test_config_set_invalid(monkeypatch, tmp_path):
     runner = CliRunner()
     result = runner.invoke(main, ["config", "transcription.model", "nonexistent"])
     assert result.exit_code != 0
+
+
+def test_config_storage_does_not_move_settings(tmp_path):
+    from tscribe.paths import get_config_path
+    runner = CliRunner()
+    path = get_config_path()
+    assert runner.invoke(main, ['config', '--init']).exit_code == 0
+    assert runner.invoke(main, ['config', 'storage.data_dir', str(tmp_path / 'audio')]).exit_code == 0
+    assert runner.invoke(main, ['config', 'transcription.model', 'tiny']).exit_code == 0
+    assert runner.invoke(main, ['config', 'transcription.model']).output.strip() == 'tiny'
+    assert 'tiny' in path.read_text()
+    assert not (tmp_path / 'audio' / 'config.toml').exists()
+
+
+def test_config_init_preserves_existing(tmp_path):
+    from tscribe.paths import get_config_path
+    runner = CliRunner()
+    path = get_config_path()
+    path.parent.mkdir(parents=True)
+    content = '# Keep my comments\n[app]\nnotifications = false\n'
+    path.write_text(content)
+    result = runner.invoke(main, ['config', '--init'])
+    assert result.exit_code == 0
+    assert path.read_text() == content
+    assert runner.invoke(main, ['config', '--path']).output.strip() == str(path)
+
+
+def test_config_invalid_file_readable_error(tmp_path):
+    from tscribe.paths import get_config_path
+    path = get_config_path()
+    path.parent.mkdir(parents=True)
+    path.write_text('[recording]\nsample_rate = -1\n')
+    result = CliRunner().invoke(main, ['list'])
+    assert result.exit_code != 0
+    assert 'Cannot load config' in result.output
+    assert str(path) in result.output

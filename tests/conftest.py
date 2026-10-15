@@ -10,6 +10,15 @@ import pytest
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def isolated_user_config(tmp_path, monkeypatch):
+    """Never read or write the developer's personal config during tests."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("TSCRIBE_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("TSCRIBE_DATA_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+
+
 @pytest.fixture
 def tmp_data_dir(tmp_path):
     """Create a temporary tscribe data directory structure."""

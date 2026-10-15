@@ -49,7 +49,7 @@ def test_transcribe_output_json_structure(speech_wav):
     """Verify the JSON output has the expected structure."""
     t = Transcriber(model_name="tiny")
     try:
-        result = t.transcribe(speech_wav, output_formats=["json"])
+        t.transcribe(speech_wav, output_formats=["json"])
     except Exception as e:
         if "huggingface" in type(e).__module__ or "Offline" in type(e).__name__ or "LocalEntryNotFound" in type(e).__name__:
             pytest.skip(f"Model not cached locally in offline mode: {e}")

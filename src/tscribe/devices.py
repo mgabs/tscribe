@@ -62,29 +62,6 @@ def list_devices(loopback_only: bool = False) -> list[AudioDevice]:
     return results
 
 
-def get_default_device() -> AudioDevice | None:
-    """Get the system default input device."""
-    sd = _import_sounddevice()
-
-    try:
-        info = sd.query_devices(kind="input")
-    except sd.PortAudioError:
-        return None
-
-    hostapis = sd.query_hostapis()
-    hostapi_name = hostapis[info["hostapi"]]["name"] if info["hostapi"] < len(hostapis) else ""
-    idx = sd.default.device[0] if isinstance(sd.default.device, (list, tuple)) else sd.default.device
-
-    return AudioDevice(
-        index=idx,
-        name=info["name"],
-        max_input_channels=info["max_input_channels"],
-        default_samplerate=info["default_samplerate"],
-        is_loopback=_detect_loopback(info["name"], hostapi_name),
-        hostapi=hostapi_name,
-    )
-
-
 def get_platform_loopback_guidance() -> str | None:
     """Return setup instructions if no loopback source is available."""
     if sys.platform == "darwin":

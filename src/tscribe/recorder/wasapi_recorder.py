@@ -17,7 +17,6 @@ class WasapiRecorder(Recorder):
         self._pyaudio = None
         self._stream = None
         self._wav_file: wave.Wave_write | None = None
-        self._config: RecordingConfig | None = None
         self._output_path: Path | None = None
         self._frames_written = 0
         self._start_time: float | None = None
@@ -57,7 +56,6 @@ class WasapiRecorder(Recorder):
 
         self._actual_sample_rate = int(device_info["defaultSampleRate"])
         self._actual_channels = device_info["maxInputChannels"]
-        self._config = config
         self._output_path = output_path
         self._frames_written = 0
 

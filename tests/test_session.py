@@ -1,6 +1,5 @@
 """Tests for session management."""
 
-import json
 import re
 import wave
 

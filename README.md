@@ -308,24 +308,48 @@ tscribe devices --loopback            # Show only loopback/monitor sources
 ### Configuration
 
 ```bash
+tscribe config --path                           # Show the active config.toml path
+tscribe config --init                           # Create defaults (preserves an existing file)
+tscribe config --edit                           # Open config.toml in $VISUAL / $EDITOR
 tscribe config                                  # Show all settings
 tscribe config recording.sample_rate            # Get a value
 tscribe config recording.auto_transcribe false  # Set a value
 tscribe config transcription.model small        # Change default model
 ```
 
-Config is stored at `~/.tscribe/config.toml`. Available keys and defaults:
+The CLI and macOS menu bar app share one TOML configuration file. New setups use
+`~/.config/tscribe/config.toml` (or `$XDG_CONFIG_HOME/tscribe/config.toml`).
+An existing `~/.tscribe/config.toml` continues to work without migration.
+
+The active file is selected in this order; files are not merged:
+
+1. `TSCRIBE_CONFIG_FILE`, if set (supports `~`).
+2. `$TSCRIBE_DATA_DIR/config.toml`, if that environment variable is set (legacy compatibility).
+3. `~/.tscribe/config.toml`, if it exists.
+4. `$XDG_CONFIG_HOME/tscribe/config.toml`, falling back to `~/.config/tscribe/config.toml`.
+
+Missing settings use defaults. Command-line flags override settings for that run.
+Changing `storage.data_dir` only moves where future recordings are stored; it does
+not move the config file or existing recordings. Restart the menu bar app after
+editing settings. `--init` creates the active file without overwriting it.
+See [config.example.toml](config.example.toml) for a complete example.
+
+Available keys and defaults:
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `recording.sample_rate` | `16000` | Sample rate in Hz |
 | `recording.channels` | `1` | Number of channels (mono) |
-| `recording.default_device` | `""` | Default audio device (empty = system default) |
+| `recording.default_device` | `""` | Audio device name or index as a string (empty = system default) |
 | `recording.auto_transcribe` | `true` | Auto-transcribe after recording |
 | `transcription.model` | `"small"` | Whisper model size (tiny/base/small/medium/large) |
 | `transcription.language` | `"auto"` | Language code or auto-detect |
 | `transcription.output_formats` | `["txt","json"]` | Output formats (txt, json, srt, vtt) |
-| `transcription.gpu` | `false` | Use GPU acceleration |
+| `transcription.gpu` | `false` | Use CUDA GPU acceleration (requires supported hardware) |
+| `transcription.diarize` | `false` | Identify speakers by default |
+| `app.notifications` | `true` | Show macOS menu bar app notifications |
+| `app.recent_limit` | `5` | Number of recent recordings in the menu (positive integer) |
+| `app.show_elapsed_time` | `true` | Show elapsed recording time in the menu bar |
 | `storage.data_dir` | `""` | Override data directory (empty = `~/.tscribe`) |
 
 ## Whisper Models
@@ -389,6 +413,35 @@ uv run pytest --cov=tscribe --cov-report=term-missing
 uv run pytest -m "not slow"
 ```
 
+Mutation testing uses [mutmut](https://mutmut.readthedocs.io/en/latest/) to
+deliberately alter code and check whether tests detect the changed behavior.
+The initial scope covers `config.py` and `paths.py`, using their focused unit
+tests without recording audio or downloading models.
+
+```bash
+# Run new mutations, resuming cached results
+uv run mutmut run --max-children 4
+
+# Recheck all configured mutations after changing tests
+uv run mutmut run --max-children 4 'tscribe.*'
+
+# Inspect surviving mutations
+uv run mutmut results
+uv run mutmut browse
+```
+
+Generated files and results stay in the ignored `mutants/` directory; normal
+source files are preserved. A surviving mutation needs review: it can reveal
+a missing assertion or a change that does not matter to the behavior being
+tested. The command's successful exit alone is not a passing mutation score.
+Expand `only_mutate` and `pytest_add_cli_args_test_selection` in `pyproject.toml`
+to cover more modules. Mutation testing requires macOS or Linux (Windows users
+can use WSL).
+
+Initial baseline: **246 of 248 mutations detected (99.2%)**. The two remaining
+mutations only change the separator between valid choices in error messages;
+the tests check rejection of invalid values without requiring that punctuation.
+
 ## Architecture
 
 ```
@@ -409,4 +462,3 @@ src/tscribe/
     ├── pipewire_recorder.py     # PipeWire capture (Linux)
     └── mock_recorder.py         # Test mock
 ```
-

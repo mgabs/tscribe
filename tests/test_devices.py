@@ -1,13 +1,11 @@
 """Tests for device enumeration and loopback detection."""
 
 import sys
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from tscribe.devices import (
-    AudioDevice,
     _detect_loopback,
     get_platform_loopback_guidance,
     list_devices,

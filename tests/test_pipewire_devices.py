@@ -4,10 +4,8 @@ import json
 import subprocess
 from unittest.mock import patch
 
-import pytest
 
 from tscribe.pipewire_devices import (
-    PipewireNode,
     get_default_sink_name,
     is_pipewire_available,
     list_pipewire_nodes,

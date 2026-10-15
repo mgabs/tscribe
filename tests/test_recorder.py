@@ -5,7 +5,7 @@ import wave
 import numpy as np
 import pytest
 
-from tscribe.recorder import MockRecorder, RecordingConfig, RecordingResult
+from tscribe.recorder import MockRecorder, RecordingConfig
 
 
 class TestRecordingConfig:
@@ -80,7 +80,7 @@ class TestMockRecorder:
         config = RecordingConfig(channels=2)
 
         recorder.start(out, config)
-        result = recorder.stop()
+        recorder.stop()
 
         with wave.open(str(out), "rb") as wf:
             assert wf.getnchannels() == 2

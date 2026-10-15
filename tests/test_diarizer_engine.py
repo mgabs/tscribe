@@ -1,8 +1,6 @@
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 import numpy as np
-import pytest
-from tscribe.diarization import Diarizer, SpeakerTurn
+from tscribe.diarization import Diarizer
 
 
 def test_clustering_with_known_speakers():

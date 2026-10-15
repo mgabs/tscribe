@@ -1,0 +1,25 @@
+# Create your active config with: tscribe config --init
+# Locate it with: tscribe config --path
+# Restart the menu bar app after editing this file.
+
+[recording]
+sample_rate = 16000
+channels = 1
+# Device name or index as a string, e.g. "7". Empty uses automatic selection.
+default_device = ""
+auto_transcribe = true
+
+[transcription]
+model = "small"
+language = "auto"
+output_formats = ["txt", "json"] # Also supports "srt" and "vtt".
+gpu = false # CUDA acceleration; keep false on macOS.
+diarize = false
+
+[storage]
+data_dir = "" # Empty uses ~/.tscribe; supports paths such as ~/Recordings/tscribe.
+
+[app]
+notifications = true
+recent_limit = 5
+show_elapsed_time = true

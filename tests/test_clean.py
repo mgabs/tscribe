@@ -1,7 +1,4 @@
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-import json
-import pytest
+from datetime import datetime, timedelta
 from click.testing import CliRunner
 from tscribe.cli import main
 from tscribe.session import SessionManager

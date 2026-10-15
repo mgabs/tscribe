@@ -1,6 +1,6 @@
 import stat
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -45,5 +45,32 @@ def test_cli_app_runs_tscribe_app():
             assert res.exit_code == 0
             assert "Running tscribe in macOS menu bar" in res.output
 
-            mock_app_cls.assert_called_once_with(diarize=True)
+            mock_app_cls.assert_called_once_with(diarize=True, config=ANY)
             mock_app.run.assert_called_once()
+
+
+def test_cli_app_loads_shared_config(tmp_path):
+    from tscribe.paths import get_config_path
+    path = get_config_path()
+    path.parent.mkdir(parents=True)
+    path.write_text('[transcription]\nmodel = "tiny"\ndiarize = true\n[app]\nnotifications = false\n')
+    with patch('sys.platform', 'darwin'), patch('tscribe.app.TscribeApp') as app:
+        result = CliRunner().invoke(main, ['app'])
+        assert result.exit_code == 0
+        assert app.call_args.kwargs['diarize'] is None
+        config = app.call_args.kwargs['config']
+        assert config.transcription.model == 'tiny'
+        assert config.transcription.diarize is True
+        assert config.app.notifications is False
+
+
+def test_cli_app_invalid_config(tmp_path):
+    from tscribe.paths import get_config_path
+    path = get_config_path()
+    path.parent.mkdir(parents=True)
+    path.write_text('[app]\nrecent_limit = 0\n')
+    with patch('sys.platform', 'darwin'), patch('tscribe.app.TscribeApp') as app:
+        result = CliRunner().invoke(main, ['app'])
+        assert result.exit_code != 0
+        assert 'Cannot load config' in result.output
+        app.assert_not_called()
