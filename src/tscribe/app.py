@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import enum
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from tscribe.config import RecordingDefaults, TscribeConfig
+from tscribe.config import TscribeConfig
 from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
 from tscribe.recorder.base import RecordingConfig, RecordingResult
 from tscribe.session import SessionManager
