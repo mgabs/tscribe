@@ -168,3 +168,150 @@ class TscribeController:
             self.state = AppState.IDLE
             if self.on_state_change:
                 self.on_state_change(self.state)
+
+
+try:
+    import rumps
+except ImportError:
+    rumps = None
+
+
+class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[misc]
+    """macOS status bar application using rumps."""
+
+    def __init__(self, recordings_dir: Optional[Path] = None, diarize: bool = False):
+        if rumps is None:
+            raise RuntimeError("rumps is required for TscribeApp.")
+        super().__init__(name="tscribe", title="🎙️")
+        if getattr(self, "_menu", None) is None:
+            self._menu = rumps.rumps.Menu()
+        self.app = self
+        self.title = "🎙️"
+        self.controller = TscribeController(
+            recordings_dir=recordings_dir,
+            on_state_change=self._handle_state_change,
+            on_notification=self._handle_notification,
+        )
+        self.controller.diarize = diarize
+        self._build_menu()
+
+    def _build_menu(self):
+        # Menu items: Record Mic, Record System, Stop, Diarize Checkbox, Copy, Open, Recent, Quit
+        self.item_rec_mic = rumps.MenuItem("🔴 Record Microphone", callback=self.on_record_mic)
+        self.item_rec_sys = rumps.MenuItem("💻 Record System Audio", callback=self.on_record_sys)
+        self.item_stop = rumps.MenuItem("⏹️ Stop & Transcribe", callback=self.on_stop)
+        self.item_stop.set_callback(None)  # Disabled initially
+
+        self.item_diarize = rumps.MenuItem("✓ Diarize Speakers", callback=self.on_toggle_diarize)
+        self.item_diarize.state = 1 if self.controller.diarize else 0
+
+        self.item_copy = rumps.MenuItem("📋 Copy Last Transcript", callback=self.on_copy_last)
+        self.item_open = rumps.MenuItem("📄 Open Last Transcript", callback=self.on_open_last)
+        self.menu_recent = rumps.MenuItem("📂 Recent Recordings")
+        self._refresh_recent_menu()
+
+        self.menu = [
+            self.item_rec_mic,
+            self.item_rec_sys,
+            self.item_stop,
+            None,
+            self.item_diarize,
+            None,
+            self.item_copy,
+            self.item_open,
+            self.menu_recent,
+            None,
+            rumps.MenuItem("❌ Quit tscribe", callback=rumps.quit_application),
+        ]
+
+        self.timer = rumps.Timer(self._on_timer_tick, 1)
+        self.timer.start()
+
+    def _refresh_recent_menu(self):
+        if getattr(self.menu_recent, "_menu", None) is not None:
+            self.menu_recent.clear()
+        sessions = self.controller.mgr.list_sessions(limit=5, sort_by="date")
+        if not sessions:
+            self.menu_recent.add(rumps.MenuItem("No past recordings"))
+            return
+        for s in sessions:
+            dur = f"{int(s.duration_seconds or 0)}s"
+            title = f"{s.stem} ({dur})"
+            item = rumps.MenuItem(title, callback=lambda sender, stem=s.stem: self._open_session(stem))
+            self.menu_recent.add(item)
+
+    def _on_timer_tick(self, _):
+        if self.controller.state == AppState.RECORDING:
+            elapsed = self.controller.elapsed_seconds()
+            self.title = f"🔴 {format_elapsed_time(elapsed)}"
+        elif self.controller.state == AppState.TRANSCRIBING:
+            self.title = "⏳ Transcribing..."
+        else:
+            self.title = "🎙️"
+
+    def _handle_state_change(self, state: AppState):
+        if state == AppState.RECORDING:
+            self.item_rec_mic.set_callback(None)
+            self.item_rec_sys.set_callback(None)
+            self.item_stop.set_callback(self.on_stop)
+        elif state == AppState.TRANSCRIBING:
+            self.item_rec_mic.set_callback(None)
+            self.item_rec_sys.set_callback(None)
+            self.item_stop.set_callback(None)
+        else:
+            self.item_rec_mic.set_callback(self.on_record_mic)
+            self.item_rec_sys.set_callback(self.on_record_sys)
+            self.item_stop.set_callback(None)
+            self._refresh_recent_menu()
+
+    def _handle_notification(self, title: str, subtitle: str, message: str):
+        if rumps is not None:
+            rumps.notification(title, subtitle, message)
+
+    def on_record_mic(self, _):
+        self.controller.start_recording(use_mic=True, diarize=bool(self.item_diarize.state))
+
+    def on_record_sys(self, _):
+        self.controller.start_recording(use_mic=False, diarize=bool(self.item_diarize.state))
+
+    def on_stop(self, _):
+        self.controller.stop_recording()
+
+    def on_toggle_diarize(self, sender):
+        sender.state = 0 if sender.state else 1
+        self.controller.diarize = bool(sender.state)
+
+    def _get_last_session(self):
+        sessions = self.controller.mgr.list_sessions(limit=1, sort_by="date")
+        if sessions:
+            return sessions[0]
+        return self.controller.mgr.get_session("HEAD")
+
+    def on_copy_last(self, _):
+        session = self._get_last_session()
+        if session and session.txt_path and session.txt_path.exists():
+            copy_to_clipboard(session.txt_path.read_text())
+            if rumps is not None:
+                rumps.notification("tscribe", "", "Copied transcript to clipboard")
+
+    def on_open_last(self, _):
+        session = self._get_last_session()
+        if session and session.txt_path and session.txt_path.exists():
+            subprocess.run(["open", str(session.txt_path)])
+        elif session and session.wav_path and session.wav_path.exists():
+            subprocess.run(["open", str(session.wav_path)])
+
+    def _open_session(self, stem: str):
+        session = self.controller.mgr.get_session(stem)
+        if session and session.txt_path and session.txt_path.exists():
+            subprocess.run(["open", str(session.txt_path)])
+        elif session and session.wav_path and session.wav_path.exists():
+            subprocess.run(["open", str(session.wav_path)])
+        else:
+            txt_path = self.controller.mgr.recordings_dir / f"{stem}.txt"
+            if txt_path.exists():
+                subprocess.run(["open", str(txt_path)])
+
+    def run(self):
+        super().run()
+
