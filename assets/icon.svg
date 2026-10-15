@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background note gradients -->
+    <linearGradient id="noteBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f0f3f8"/>
+    </linearGradient>
+    <linearGradient id="noteBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d1d9e6"/>
+      <stop offset="100%" stop-color="#9aaec4"/>
+    </linearGradient>
+    <linearGradient id="foldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dce4ec"/>
+      <stop offset="100%" stop-color="#b0c0d4"/>
+    </linearGradient>
+    
+    <!-- Microphone metallic gradients -->
+    <linearGradient id="micBody" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2c3440"/>
+      <stop offset="50%" stop-color="#1a1e24"/>
+      <stop offset="100%" stop-color="#0f1115"/>
+    </linearGradient>
+    <linearGradient id="micGrille" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#707e94"/>
+      <stop offset="40%" stop-color="#cbd5e1"/>
+      <stop offset="70%" stop-color="#94a3b8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="standGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="50%" stop-color="#94a3b8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="accentRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4b4b"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+
+    <!-- Filters -->
+    <filter id="dropShadowNote" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0f172a" flood-opacity="0.15"/>
+    </filter>
+    <filter id="dropShadowMic" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+    
+    <!-- Grille Pattern -->
+    <pattern id="grillePattern" width="6" height="6" patternUnits="userSpaceOnUse">
+      <circle cx="3" cy="3" r="1.2" fill="#334155" opacity="0.6"/>
+    </pattern>
+  </defs>
+
+  <!-- Note / Document (Background) -->
+  <g filter="url(#dropShadowNote)">
+    <!-- Main page outline with dog-ear fold at top right -->
+    <!-- Document bounds: x=100, y=56, width=312, height=400 -->
+    <path d="M 124 56 
+             L 344 56 
+             L 412 124 
+             L 412 432 
+             A 24 24 0 0 1 388 456 
+             L 124 456 
+             A 24 24 0 0 1 100 432 
+             L 100 80 
+             A 24 24 0 0 1 124 56 Z" 
+          fill="url(#noteBg)" 
+          stroke="url(#noteBorder)" 
+          stroke-width="3"/>
+
+    <!-- Folded Corner -->
+    <path d="M 344 56 
+             L 344 108 
+             A 16 16 0 0 0 360 124 
+             L 412 124 Z" 
+          fill="url(#foldGradient)" 
+          stroke="url(#noteBorder)" 
+          stroke-width="2"/>
+    
+    <!-- Text / Waveform Lines on Document -->
+    <!-- Header accent line -->
+    <rect x="140" y="100" width="140" height="10" rx="5" fill="#3b82f6" opacity="0.8"/>
+    
+    <!-- Note body lines -->
+    <rect x="140" y="140" width="232" height="8" rx="4" fill="#94a3b8" opacity="0.4"/>
+    <rect x="140" y="170" width="190" height="8" rx="4" fill="#94a3b8" opacity="0.35"/>
+    <rect x="140" y="200" width="220" height="8" rx="4" fill="#94a3b8" opacity="0.35"/>
+    <rect x="140" y="230" width="160" height="8" rx="4" fill="#94a3b8" opacity="0.3"/>
+    
+    <!-- Transcription timestamps & text hints -->
+    <circle cx="148" cy="274" r="5" fill="#ef4444" opacity="0.6"/>
+    <rect x="164" y="270" width="180" height="8" rx="4" fill="#94a3b8" opacity="0.35"/>
+    <rect x="140" y="300" width="200" height="8" rx="4" fill="#94a3b8" opacity="0.3"/>
+    <rect x="140" y="330" width="150" height="8" rx="4" fill="#94a3b8" opacity="0.25"/>
+    <rect x="140" y="360" width="210" height="8" rx="4" fill="#94a3b8" opacity="0.25"/>
+    <rect x="140" y="390" width="130" height="8" rx="4" fill="#94a3b8" opacity="0.2"/>
+  </g>
+
+  <!-- Microphone in Front (Foreground) -->
+  <g filter="url(#dropShadowMic)">
+    <!-- Base stand -->
+    <ellipse cx="256" cy="460" rx="84" ry="16" fill="url(#micBody)"/>
+    <ellipse cx="256" cy="456" rx="80" ry="14" fill="url(#standGrad)"/>
+    <ellipse cx="256" cy="454" rx="60" ry="10" fill="url(#micBody)"/>
+
+    <!-- Vertical Stem -->
+    <rect x="249" y="340" width="14" height="116" rx="4" fill="url(#standGrad)"/>
+    <rect x="252" y="340" width="4" height="116" fill="#f8fafc" opacity="0.3"/>
+
+    <!-- U-shaped Cradle / Mount -->
+    <path d="M 196 230 
+             A 60 60 0 0 0 316 230" 
+          fill="none" 
+          stroke="url(#standGrad)" 
+          stroke-width="12" 
+          stroke-linecap="round"/>
+    <!-- Mount joint connectors -->
+    <circle cx="196" cy="230" r="10" fill="url(#micBody)"/>
+    <circle cx="196" cy="230" r="5" fill="#94a3b8"/>
+    <circle cx="316" cy="230" r="10" fill="url(#micBody)"/>
+    <circle cx="316" cy="230" r="5" fill="#94a3b8"/>
+    <!-- Mount center joint -->
+    <rect x="246" y="286" width="20" height="20" rx="4" fill="url(#micBody)"/>
+
+    <!-- Microphone Capsule Outer -->
+    <!-- Center x=256, y from 130 to 270 (height 140, width 72) -->
+    <rect x="220" y="140" width="72" height="130" rx="36" fill="url(#micBody)"/>
+
+    <!-- Microphone Mesh Grille (Top half) -->
+    <rect x="220" y="140" width="72" height="74" rx="36" fill="url(#micGrille)"/>
+    <rect x="220" y="140" width="72" height="74" rx="36" fill="url(#grillePattern)"/>
+    <!-- Grille highlight -->
+    <path d="M 230 160 A 26 26 0 0 1 256 144" stroke="#ffffff" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.6"/>
+
+    <!-- Metallic separator ring -->
+    <rect x="218" y="210" width="76" height="8" rx="2" fill="url(#standGrad)"/>
+    <!-- LED Indicator (recording status glow) -->
+    <circle cx="256" cy="236" r="4.5" fill="url(#accentRed)"/>
+    <circle cx="256" cy="236" r="8" fill="#ef4444" opacity="0.35"/>
+
+    <!-- Subtle audio wave arcs radiating from mic -->
+    <path d="M 180 160 A 90 90 0 0 0 180 220" fill="none" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+    <path d="M 160 144 A 120 120 0 0 0 160 236" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+
+    <path d="M 332 160 A 90 90 0 0 1 332 220" fill="none" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+    <path d="M 352 144 A 120 120 0 0 1 352 236" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+  </g>
+</svg>

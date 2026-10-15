@@ -12,6 +12,17 @@ import click
 from tscribe import __version__
 
 
+def _load_config():
+    from tscribe.config import TscribeConfig
+    from tscribe.paths import get_config_path
+
+    path = get_config_path()
+    try:
+        return TscribeConfig.load(path)
+    except (ValueError, OSError) as exc:
+        raise click.ClickException(f"Cannot load config {path}: {exc}") from exc
+
+
 def _transcription_progress(current: float, total: float, start_time: float) -> None:
     """Render an in-place progress bar for transcription."""
     frac = min(current / total, 1.0) if total > 0 else 0.0
@@ -218,7 +229,7 @@ def _auto_transcribe(
 
     click.echo(f"Transcribing with model '{model_name}'...")
     try:
-        transcriber = Transcriber(model_name=model_name)
+        transcriber = Transcriber(model_name=model_name, device="cuda" if cfg.transcription.gpu else "cpu")
         t_start = time.monotonic()
 
         def _progress(cur: float, total: float) -> None:
@@ -266,7 +277,7 @@ def record(device, loopback, output, no_transcribe, sample_rate, channels, diari
     from tscribe.recorder import RecordingConfig
     from tscribe.session import SessionManager
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+    cfg = _load_config()
     data_dir = get_data_dir(cfg.storage.data_dir)
     ensure_dirs(data_dir)
 
@@ -277,6 +288,8 @@ def record(device, loopback, output, no_transcribe, sample_rate, channels, diari
         wav_path = Path(output)
     else:
         wav_path = session_mgr.recordings_dir / f"{stem}.wav"
+
+    device = device or cfg.recording.default_device or None
 
     if loopback is None:
         loopback = False if device else _default_loopback()
@@ -400,7 +413,7 @@ def _download_audio(url, output_dir):
 @click.option("--language", default=None, help="Language code (default: auto-detect).")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path.")
 @click.option("--format", "fmt", default=None, help="Output format: txt,json,srt,vtt,all")
-@click.option("--gpu", is_flag=True, help="Use GPU acceleration.")
+@click.option("--gpu/--no-gpu", default=None, help="Use GPU acceleration.")
 @click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization.")
 @click.option("--speakers", type=int, default=None, help="Expected number of speakers.")
 @click.option("--names", default=None, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
@@ -422,7 +435,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
     from tscribe.session import SessionManager
     from tscribe.transcriber import Transcriber
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+    cfg = _load_config()
     data_dir = get_data_dir(cfg.storage.data_dir)
 
     model_name = model or cfg.transcription.model
@@ -498,7 +511,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
             stem = None
             mgr = None
 
-    device = "cuda" if gpu else "cpu"
+    device = "cuda" if (gpu if gpu is not None else cfg.transcription.gpu) else "cpu"
     transcriber = Transcriber(model_name=model_name, device=device)
 
     should_diarize = (
@@ -565,7 +578,7 @@ def list_recordings(limit, search, sort_by, no_header):
     from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+    cfg = _load_config()
     data_dir = get_data_dir(cfg.storage.data_dir)
     mgr = SessionManager(get_recordings_dir(data_dir))
 
@@ -621,7 +634,7 @@ def search(query, limit, sort_by):
     from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+    cfg = _load_config()
     data_dir = get_data_dir(cfg.storage.data_dir)
     mgr = SessionManager(get_recordings_dir(data_dir))
 
@@ -805,7 +818,7 @@ def play(ref):
     from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+    cfg = _load_config()
     data_dir = get_data_dir(cfg.storage.data_dir)
     mgr = SessionManager(get_recordings_dir(data_dir))
 
@@ -827,7 +840,7 @@ def _resolve_transcript_path(ref, fmt):
     from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+    cfg = _load_config()
     data_dir = get_data_dir(cfg.storage.data_dir)
     mgr = SessionManager(get_recordings_dir(data_dir))
 
@@ -912,7 +925,7 @@ def path(ref, fmt):
     from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
     from tscribe.session import SessionManager
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+    cfg = _load_config()
     data_dir = get_data_dir(cfg.storage.data_dir)
     mgr = SessionManager(get_recordings_dir(data_dir))
 
@@ -948,7 +961,7 @@ def label(ref, names):
     elif ref.endswith(".json"):
         raise click.ClickException(f"File not found: {ref}")
     else:
-        cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+        cfg = _load_config()
         data_dir = get_data_dir(cfg.storage.data_dir)
         mgr = SessionManager(get_recordings_dir(data_dir))
         session = _resolve_session(ref, mgr)
@@ -1101,14 +1114,27 @@ def devices(loopback):
 @click.argument("key", required=False)
 @click.argument("value", required=False)
 @click.option("--list", "list_all", is_flag=True, help="Show all configuration values.")
-def config(key, value, list_all):
+@click.option("--path", "show_path", is_flag=True, help="Show the active config file path.")
+@click.option("--init", "initialize", is_flag=True, help="Create a config file with defaults if missing.")
+@click.option("--edit", "edit", is_flag=True, help="Open the config file in your editor.")
+def config(key, value, list_all, show_path, initialize, edit):
     """View or set configuration."""
     from tscribe.config import TscribeConfig
     from tscribe.paths import get_config_path, get_data_dir
 
-    cfg = TscribeConfig.load(get_config_path(get_data_dir()))
-    config_path = get_config_path(get_data_dir(cfg.storage.data_dir))
-    cfg = TscribeConfig.load(config_path)
+    config_path = get_config_path()
+    if show_path:
+        click.echo(config_path)
+        return
+    cfg = _load_config()
+    if initialize or edit:
+        if not config_path.exists():
+            cfg.save(config_path)
+        if edit:
+            click.edit(filename=str(config_path))
+        else:
+            click.echo(f"Config file: {config_path}")
+        return
 
     if list_all or (key is None and value is None):
         for section_name, section_dict in cfg._to_dict().items():
@@ -1146,7 +1172,7 @@ def clean(days, days_30, yes, dry_run, custom_dir):
     if custom_dir:
         recordings_dir = Path(custom_dir)
     else:
-        cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+        cfg = _load_config()
         recordings_dir = get_recordings_dir(get_data_dir(cfg.storage.data_dir))
 
     mgr = SessionManager(recordings_dir)
@@ -1181,7 +1207,7 @@ def clean(days, days_30, yes, dry_run, custom_dir):
 
 
 @main.command()
-@click.option("--diarize/--no-diarize", default=False, help="Enable speaker diarization by default.")
+@click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization by default.")
 @click.option("--install-desktop", is_flag=True, help="Create ~/Applications/tscribe.app launcher.")
 def app(diarize, install_desktop):
     """Launch macOS menu bar status item app."""
@@ -1200,6 +1226,13 @@ exec {sys.executable} -m tscribe.cli app
         script_path.write_text(script_content)
         script_path.chmod(0o755)
 
+        resources_dir = contents_dir / "Resources"
+        resources_dir.mkdir(parents=True, exist_ok=True)
+        pkg_icon = Path(__file__).resolve().parent.parent.parent / "assets" / "AppIcon.icns"
+        if pkg_icon.exists():
+            import shutil
+            shutil.copy(pkg_icon, resources_dir / "AppIcon.icns")
+
         plist_path = contents_dir / "Info.plist"
         plist_content = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1213,6 +1246,8 @@ exec {sys.executable} -m tscribe.cli app
     <string>tscribe</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
 </dict>
