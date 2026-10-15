@@ -30,7 +30,7 @@ packages = ["src/tscribe"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["slow: marks tests as slow (requires model download)"]
-addopts = "--tb=short"
+addopts = "--tb=short -m 'not slow'"
 
 [dependency-groups]
 dev = [
