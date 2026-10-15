@@ -39,6 +39,7 @@ class TranscriptionDefaults:
     language: str = DEFAULT_LANGUAGE
     output_formats: list[str] = field(default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS))
     gpu: bool = False
+    diarize: bool = False
 
 
 @dataclass

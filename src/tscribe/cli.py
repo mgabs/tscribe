@@ -198,11 +198,22 @@ def _create_recorder(rec_config):
     return SounddeviceRecorder()
 
 
-def _auto_transcribe(cfg, wav_path, stem, session_mgr):
+def _auto_transcribe(
+    cfg,
+    wav_path,
+    stem,
+    session_mgr,
+    diarize: bool | None = None,
+    num_speakers: int | None = None,
+    names: str | None = None,
+):
     """Run transcription after recording. Handles errors gracefully."""
     from tscribe.transcriber import Transcriber
 
     model_name = cfg.transcription.model
+    should_diarize = (
+        diarize if diarize is not None else getattr(cfg.transcription, "diarize", False)
+    )
 
     click.echo(f"Transcribing with model '{model_name}'...")
     try:
@@ -217,6 +228,9 @@ def _auto_transcribe(cfg, wav_path, stem, session_mgr):
             language=cfg.transcription.language,
             output_formats=cfg.transcription.output_formats,
             progress_callback=_progress,
+            diarize=should_diarize,
+            num_speakers=num_speakers,
+            names=names,
         )
         click.echo()
         session_mgr.update_metadata(stem, transcribed=True, model=model_name)
@@ -239,7 +253,10 @@ def main():
 @click.option("--no-transcribe", is_flag=True, help="Don't auto-transcribe after recording.")
 @click.option("--sample-rate", type=int, default=None, help="Sample rate in Hz.")
 @click.option("--channels", type=int, default=None, help="Number of channels.")
-def record(device, loopback, output, no_transcribe, sample_rate, channels):
+@click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization.")
+@click.option("--speakers", type=int, default=None, help="Expected number of speakers.")
+@click.option("--names", default=None, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
+def record(device, loopback, output, no_transcribe, sample_rate, channels, diarize, speakers, names):
     """Record audio from system audio (default) or microphone."""
     from pathlib import Path
 
@@ -322,7 +339,15 @@ def record(device, loopback, output, no_transcribe, sample_rate, channels):
         session_mgr.write_metadata(stem, meta)
 
         if not no_transcribe and cfg.recording.auto_transcribe:
-            _auto_transcribe(cfg, wav_path, stem, session_mgr)
+            _auto_transcribe(
+                cfg,
+                wav_path,
+                stem,
+                session_mgr,
+                diarize=diarize,
+                num_speakers=speakers,
+                names=names,
+            )
 
     finally:
         signal.signal(signal.SIGINT, original_handler)
@@ -375,7 +400,10 @@ def _download_audio(url, output_dir):
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path.")
 @click.option("--format", "fmt", default=None, help="Output format: txt,json,srt,vtt,all")
 @click.option("--gpu", is_flag=True, help="Use GPU acceleration.")
-def transcribe(source, model, language, output, fmt, gpu):
+@click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization.")
+@click.option("--speakers", type=int, default=None, help="Expected number of speakers.")
+@click.option("--names", default=None, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
+def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, names):
     """Transcribe an audio file, URL, or previous recording.
 
     \b
@@ -472,6 +500,10 @@ def transcribe(source, model, language, output, fmt, gpu):
     device = "cuda" if gpu else "cpu"
     transcriber = Transcriber(model_name=model_name, device=device)
 
+    should_diarize = (
+        diarize if diarize is not None else getattr(cfg.transcription, "diarize", False)
+    )
+
     click.echo(f"Transcribing {audio_path.name} with model '{model_name}'...")
     t_start = time.monotonic()
 
@@ -483,6 +515,9 @@ def transcribe(source, model, language, output, fmt, gpu):
         language=lang,
         output_formats=output_formats,
         progress_callback=_progress,
+        diarize=should_diarize,
+        num_speakers=speakers,
+        names=names,
     )
     click.echo()
 
@@ -886,6 +921,104 @@ def path(ref, fmt):
     if not file_path.exists():
         raise click.ClickException(f"File not found: {file_path.name}")
     click.echo(str(file_path))
+
+
+@main.command()
+@click.argument("ref", default="HEAD")
+@click.option("--names", required=True, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
+def label(ref, names):
+    """Re-label speaker names in an existing transcript."""
+    import json
+    from pathlib import Path
+
+    from tscribe.config import TscribeConfig
+    from tscribe.diarization import parse_speaker_names
+    from tscribe.paths import get_config_path, get_data_dir, get_recordings_dir
+    from tscribe.session import SessionManager
+    from tscribe.transcriber import TranscriptResult, TranscriptSegment
+
+    json_path = None
+    ref_path = Path(ref)
+    if ref_path.is_file():
+        if ref_path.suffix == ".json":
+            json_path = ref_path
+        else:
+            json_path = ref_path.with_suffix(".json")
+    elif ref.endswith(".json"):
+        raise click.ClickException(f"File not found: {ref}")
+    else:
+        cfg = TscribeConfig.load(get_config_path(get_data_dir()))
+        data_dir = get_data_dir(cfg.storage.data_dir)
+        mgr = SessionManager(get_recordings_dir(data_dir))
+        session = _resolve_session(ref, mgr)
+        json_path = session.wav_path.with_suffix(".json")
+
+    if not json_path or not json_path.exists():
+        raise click.ClickException(f"Transcript JSON not found: {json_path}")
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    name_map = parse_speaker_names(names)
+    tokens = [t.strip() for t in names.split(",") if t.strip()]
+    is_explicit = any("=" in token for token in tokens)
+
+    distinct_speakers = []
+    for seg in data.get("segments", []):
+        spk = seg.get("speaker")
+        if spk and spk not in distinct_speakers:
+            distinct_speakers.append(spk)
+
+    positional_map = {}
+    if not is_explicit:
+        for idx, spk in enumerate(distinct_speakers):
+            if idx < len(tokens):
+                positional_map[spk] = tokens[idx]
+
+    segments = []
+    for s in data.get("segments", []):
+        spk = s.get("speaker")
+        if spk:
+            if spk in name_map:
+                spk = name_map[spk]
+            elif spk in positional_map:
+                spk = positional_map[spk]
+        segments.append(
+            TranscriptSegment(
+                start=s["start"],
+                end=s["end"],
+                text=s["text"],
+                confidence=s.get("confidence", 0.0),
+                speaker=spk,
+            )
+        )
+
+    result = TranscriptResult(
+        file=data.get("file", json_path.stem),
+        model=data.get("model", "unknown"),
+        language=data.get("language", "en"),
+        segments=segments,
+    )
+
+    base_path = json_path.with_suffix("")
+    json_path.write_text(json.dumps(result.to_json(), indent=2))
+
+    updated_files = [json_path.name]
+    txt_path = base_path.with_suffix(".txt")
+    srt_path = base_path.with_suffix(".srt")
+    vtt_path = base_path.with_suffix(".vtt")
+
+    if txt_path.exists():
+        txt_path.write_text(result.to_txt())
+        updated_files.append(txt_path.name)
+    if srt_path.exists():
+        srt_path.write_text(result.to_srt())
+        updated_files.append(srt_path.name)
+    if vtt_path.exists():
+        vtt_path.write_text(result.to_vtt())
+        updated_files.append(vtt_path.name)
+
+    click.echo(f"Updated speaker labels in {', '.join(updated_files)}.")
 
 
 @main.command()
