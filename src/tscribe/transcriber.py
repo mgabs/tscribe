@@ -88,6 +88,20 @@ class Transcriber:
 
             os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
             os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
+            try:
+                import av
+
+                _orig_open = av.open
+
+                def _compat_open(*args, **kwargs):
+                    kwargs.pop("metadata_errors", None)
+                    return _orig_open(*args, **kwargs)
+
+                av.open = _compat_open
+            except ImportError:
+                pass
+
             from faster_whisper import WhisperModel
 
             self._model = WhisperModel(
