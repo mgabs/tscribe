@@ -14,6 +14,7 @@ class TranscriptSegment:
     end: float
     text: str
     confidence: float = 0.0
+    speaker: str | None = None
 
 
 @dataclass
@@ -24,8 +25,33 @@ class TranscriptResult:
     segments: list[TranscriptSegment] = field(default_factory=list)
 
     def to_txt(self) -> str:
-        """Plain text, one segment per line."""
-        return "\n".join(seg.text.strip() for seg in self.segments if seg.text.strip())
+        """Plain text, grouped by speaker if present."""
+        if not self.segments:
+            return ""
+        if not any(seg.speaker for seg in self.segments):
+            return "\n".join(seg.text.strip() for seg in self.segments if seg.text.strip())
+
+        blocks: list[str] = []
+        current_speaker: str | None = None
+        current_texts: list[str] = []
+
+        for seg in self.segments:
+            text = seg.text.strip()
+            if not text:
+                continue
+            speaker = seg.speaker or "Unknown"
+            if speaker != current_speaker:
+                if current_texts and current_speaker:
+                    blocks.append(f"[{current_speaker}]:\n" + "\n".join(current_texts))
+                current_speaker = speaker
+                current_texts = [text]
+            else:
+                current_texts.append(text)
+
+        if current_texts and current_speaker:
+            blocks.append(f"[{current_speaker}]:\n" + "\n".join(current_texts))
+
+        return "\n\n".join(blocks)
 
     def to_json(self) -> dict:
         return {
@@ -38,31 +64,34 @@ class TranscriptResult:
                     "end": seg.end,
                     "text": seg.text.strip(),
                     "confidence": seg.confidence,
+                    "speaker": seg.speaker,
                 }
                 for seg in self.segments
             ],
         }
 
     def to_srt(self) -> str:
-        """SRT subtitle format."""
         lines = []
         for i, seg in enumerate(self.segments, 1):
             start_ts = _format_srt_time(seg.start)
             end_ts = _format_srt_time(seg.end)
             lines.append(f"{i}")
             lines.append(f"{start_ts} --> {end_ts}")
-            lines.append(seg.text.strip())
+            prefix = f"[{seg.speaker}] " if seg.speaker else ""
+            lines.append(f"{prefix}{seg.text.strip()}")
             lines.append("")
         return "\n".join(lines)
 
     def to_vtt(self) -> str:
-        """WebVTT subtitle format."""
         lines = ["WEBVTT", ""]
         for seg in self.segments:
             start_ts = _format_vtt_time(seg.start)
             end_ts = _format_vtt_time(seg.end)
             lines.append(f"{start_ts} --> {end_ts}")
-            lines.append(seg.text.strip())
+            if seg.speaker:
+                lines.append(f"<v {seg.speaker}>{seg.text.strip()}</v>")
+            else:
+                lines.append(seg.text.strip())
             lines.append("")
         return "\n".join(lines)
 
