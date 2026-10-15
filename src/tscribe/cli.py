@@ -1189,7 +1189,8 @@ def app(diarize, install_desktop):
         raise click.ClickException("The 'app' command is only supported on macOS.")
 
     if install_desktop:
-        app_dir = Path.home() / "Applications" / "tscribe.app" / "Contents" / "MacOS"
+        contents_dir = Path.home() / "Applications" / "tscribe.app" / "Contents"
+        app_dir = contents_dir / "MacOS"
         app_dir.mkdir(parents=True, exist_ok=True)
         script_path = app_dir / "tscribe"
         # Executable launcher script
@@ -1198,13 +1199,34 @@ exec {sys.executable} -m tscribe.cli app
 """
         script_path.write_text(script_content)
         script_path.chmod(0o755)
+
+        plist_path = contents_dir / "Info.plist"
+        plist_content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>tscribe</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.tscribe.app</string>
+    <key>CFBundleName</key>
+    <string>tscribe</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+"""
+        plist_path.write_text(plist_content)
         click.echo(f"Installed desktop launcher: {Path.home() / 'Applications' / 'tscribe.app'}")
         return
 
     from tscribe.app import TscribeApp
 
     app_instance = TscribeApp(diarize=diarize)
-    click.echo("Running tscribe in macOS menu bar... (Click ❌ Quit in menu to exit)")
+    click.echo("Running tscribe in macOS menu bar (top-right of screen near clock).")
+    click.echo("Look for '🎙️ tscribe' in the menu bar. (Click ❌ Quit in menu to exit)")
     app_instance.run()
 
 

@@ -182,6 +182,11 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
         if rumps is None:
             raise RuntimeError("rumps is required for TscribeApp.")
         super().__init__(name="tscribe", title="🎙️ tscribe")
+        try:
+            from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+            NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        except Exception:
+            pass
         if getattr(self, "_menu", None) is None:
             self._menu = rumps.rumps.Menu()
         self.app = self
@@ -265,7 +270,17 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
 
     def _handle_notification(self, title: str, subtitle: str, message: str):
         if rumps is not None:
-            rumps.notification(title, subtitle, message)
+            try:
+                rumps.notification(title, subtitle, message)
+                return
+            except Exception:
+                pass
+        full_msg = f"{subtitle}\n{message}".strip() if subtitle else message
+        try:
+            cmd = ["osascript", "-e", f'display notification "{full_msg}" with title "{title}"']
+            subprocess.run(cmd, check=False)
+        except Exception:
+            pass
 
     def on_record_mic(self, _):
         self.controller.start_recording(use_mic=True, diarize=bool(self.item_diarize.state))
@@ -290,8 +305,7 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
         session = self._get_last_session()
         if session and session.txt_path and session.txt_path.exists():
             copy_to_clipboard(session.txt_path.read_text())
-            if rumps is not None:
-                rumps.notification("tscribe", "", "Copied transcript to clipboard")
+            self._handle_notification("tscribe", "", "Copied transcript to clipboard")
 
     def on_open_last(self, _):
         session = self._get_last_session()
@@ -312,5 +326,11 @@ class TscribeApp(rumps.App if rumps is not None else object):  # type: ignore[mi
                 subprocess.run(["open", str(txt_path)])
 
     def run(self):
+        try:
+            from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+            NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        except Exception:
+            pass
+        self._handle_notification("tscribe", "Active in Menu Bar", "Click 🎙️ tscribe near clock (top right)")
         super().run()
 
