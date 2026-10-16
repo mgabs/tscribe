@@ -22,6 +22,7 @@ def run(*arguments):
 def main(destination: Path | None = None):
     if sys.platform != 'darwin':
         raise SystemExit('Build the native app on macOS.')
+    run(sys.executable, ROOT / 'packaging/macos/build_audio_dsp.py')
     worker_dist = ROOT / 'build/worker-dist'
     run(sys.executable, '-m', 'PyInstaller', '--noconfirm',
         '--distpath', worker_dist, '--workpath', ROOT / 'build/pyinstaller',

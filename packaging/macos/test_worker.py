@@ -16,6 +16,11 @@ def main(executable: Path):
         result = subprocess.run([str(executable)], input=request, text=True, capture_output=True, check=True, env=env, timeout=30)
         response = json.loads(result.stdout)
         assert response['id'] == 'check' and response['event'] == 'result', result.stdout
+        echo = subprocess.run([str(executable)], input=json.dumps({'id': 'echo', 'command': 'check-echo'}) + '\n', text=True, capture_output=True, check=True, env=env, timeout=30)
+        echo_response = json.loads(echo.stdout)
+        assert echo_response['event'] == 'result' and echo_response['data']['available'], echo.stdout
+        notices = executable.parent / '_internal/licenses/SpeexDSP'
+        assert (notices / 'COPYING').is_file() and (notices / 'THIRD_PARTY_NOTICES.txt').is_file()
         # Emulate the helper arguments used by multiprocessing on macOS. The
         # tracker reads this dedicated, already-closed pipe, not protocol stdin.
         reader, writer = os.pipe()
@@ -29,7 +34,7 @@ def main(executable: Path):
         finally:
             os.close(reader)
         assert tracker.stdout == '', 'Resource tracker incorrectly started another protocol server: ' + tracker.stdout
-    print('Bundled worker bootstrap and multiprocessing isolation checks passed.')
+    print('Bundled worker bootstrap, echo DSP, and multiprocessing isolation checks passed.')
 
 
 if __name__ == '__main__':

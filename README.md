@@ -380,14 +380,17 @@ buttons also support live captions when enabled.
 | `captions.model` | `"base"` | Same model choices as `transcription.model` |
 | `captions.audio_source` | `"both"` | `both`, `microphone`, `system`; used by Record Meeting |
 | `captions.output_mode` | `"headphones"` | `headphones`, `speakers` |
+| `captions.echo_cancellation` | `true` | Experimental echo reduction with speakers and both sources |
 | `captions.font_size` | `24` | 12–72 points |
 | `captions.always_on_top` | `true` | `true`, `false` |
 
 The floating window shows stable text and a provisional latest phrase. Caption
 language uses `transcription.language`. Drafts are saved separately; final
 transcription still follows `recording.auto_transcribe` and the normal model
-settings. Speaker mode remains experimental: echo cancellation is not implemented,
-so headphones give cleaner results when capturing both sources. See the
+settings. Speaker mode has experimental reference-based echo reduction using
+SpeexDSP, applied to live captions and the final mix while retaining original
+tracks. Real-room quality still needs validation; headphones bypass the filter.
+See the
 [Mac app guide](docs/macos-app.md#live-meeting-captions) for details and limitations.
 
 ## Whisper Models

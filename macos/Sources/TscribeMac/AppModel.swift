@@ -38,6 +38,7 @@ final class AppModel: ObservableObject {
     let liveCaptions = LiveCaptions()
     @Published var captionAudioSource = "both"
     @Published var captionOutputMode = "headphones"
+    @Published var echoCancellation = true
     @Published var captionFontSize = 24
     @Published var captionsAlwaysOnTop = true
     @Published var configPath = ""
@@ -98,6 +99,7 @@ final class AppModel: ObservableObject {
         captionModel = config["captions"]?["model"] as? String ?? "base"
         captionAudioSource = config["captions"]?["audio_source"] as? String ?? "both"
         captionOutputMode = config["captions"]?["output_mode"] as? String ?? "headphones"
+        echoCancellation = config["captions"]?["echo_cancellation"] as? Bool ?? true
         captionFontSize = config["captions"]?["font_size"] as? Int ?? 24
         captionsAlwaysOnTop = config["captions"]?["always_on_top"] as? Bool ?? true
     }
@@ -153,6 +155,7 @@ final class AppModel: ObservableObject {
         transcriptCache[stem] = transcript
         if result["message"] as? String == "Transcription complete" { liveCaptions.finish(text: transcript, stem: stem) }
         message = result["message"] as? String ?? "Complete"
+        if let warning = result["warning"] as? String, !warning.isEmpty { error = warning }
         phase = "idle"; started = nil; activeStem = nil
         if notifications {
             let completionMessage = result["message"] as? String ?? "Recording saved"
@@ -190,6 +193,7 @@ final class AppModel: ObservableObject {
                 "app.show_elapsed_time": showElapsed,
                 "captions.enabled": liveEnabled, "captions.model": captionModel,
                 "captions.audio_source": captionAudioSource, "captions.output_mode": captionOutputMode,
+                "captions.echo_cancellation": echoCancellation,
                 "captions.font_size": captionFontSize, "captions.always_on_top": captionsAlwaysOnTop,
             ]]))
             phase = "idle"; message = "Settings saved"

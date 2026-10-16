@@ -61,6 +61,8 @@ final class LiveCaptions: ObservableObject {
                     if !gaps.isEmpty { status = "Some captions were missed. Full audio is still being recorded." }
                     else if Date().timeIntervalSince(began) > 3 { status = "Captions catching up · audio recording continues" }
                     else { status = "Live draft · the latest phrase may change" }
+                    if result["echo_active"] as? Bool == true { status += " · echo reduction active" }
+                    if let warning = result["warning"] as? String, !warning.isEmpty { status += " · " + warning }
                     sequence += 1
                 } catch {
                     if !Task.isCancelled { status = "Captions unavailable: \(error.localizedDescription) Recording continues." }

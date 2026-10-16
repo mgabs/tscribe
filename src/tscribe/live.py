@@ -14,7 +14,7 @@ RATE = 16000
 MAX_WINDOW = 30
 
 
-def read_window(tracks):
+def read_window(tracks, echo_cancellation=False):
     """Align completed rolling WAV snapshots; inference never reads an open WAV."""
     from faster_whisper.audio import decode_audio
     from tscribe.transcriber import ensure_av_compatibility
@@ -32,15 +32,23 @@ def read_window(tracks):
     end = max(offset + len(samples) / RATE for samples, offset in decoded)
     if not np.isfinite(start) or not np.isfinite(end) or start < 0 or end - start > MAX_WINDOW + 2:
         raise ValueError('Invalid caption window timestamps')
-    mixed = np.zeros(round((end - start) * RATE), dtype=np.float32)
+    aligned = []
     for samples, offset in decoded:
+        track = np.zeros(round((end - start) * RATE), dtype=np.float32)
         first = round((offset - start) * RATE)
-        count = min(len(samples), len(mixed) - first)
-        mixed[first:first + count] += samples[:count] / len(decoded)
+        count = min(len(samples), len(track) - first)
+        track[first:first + count] = samples[:count]
+        aligned.append(track)
+    if echo_cancellation and len(aligned) == 2:
+        from tscribe.echo import EchoCanceller
+        # The caller orders microphone first, system playback reference second.
+        with EchoCanceller(RATE) as canceller:
+            aligned[0] = canceller.process(aligned[0], aligned[1])
+    mixed = sum(aligned) / len(aligned)
     return mixed, start, end
 
 
-def mix_recording(path: Path, offsets: dict):
+def mix_recording(path: Path, offsets: dict, echo_cancellation=False):
     """Mix retained mic/system tracks in bounded blocks after capture closes."""
     tracks = path.parent / '.tracks' / path.stem
     tracks.mkdir(parents=True, exist_ok=True)
@@ -62,6 +70,13 @@ def mix_recording(path: Path, offsets: dict):
         if any(value < 0 or value > rate * 60 for value in starts):
             raise ValueError('Invalid meeting track start offsets')
         length = max(start + source.getnframes() for start, source in zip(starts, (mic, remote)))
+        canceller, warning = None, None
+        if echo_cancellation:
+            from tscribe.echo import EchoCanceller, EchoUnavailable
+            try:
+                canceller = EchoCanceller(rate)
+            except EchoUnavailable as error:
+                warning = str(error)
         descriptor, temporary = tempfile.mkstemp(prefix='.tscribe-mix-', suffix='.wav', dir=path.parent)
         os.close(descriptor)
         try:
@@ -71,19 +86,33 @@ def mix_recording(path: Path, offsets: dict):
                 output.setframerate(rate)
                 for position in range(0, length, rate):
                     count = min(rate, length - position)
-                    mixed = np.zeros((count, channels), dtype=np.int32)
+                    blocks = []
                     for source, start in zip((mic, remote), starts):
+                        block = np.zeros((count, channels), dtype=np.int32)
+                        blocks.append(block)
                         first = max(position, start)
                         last = min(position + count, start + source.getnframes())
                         if first >= last:
                             continue
                         source.setpos(first - start)
                         samples = np.frombuffer(source.readframes(last - first), dtype='<i2').reshape(-1, channels)
-                        mixed[first - position:last - position] += samples.astype(np.int32)
+                        block[first - position:last - position] = samples.astype(np.int32)
+                    if canceller is not None:
+                        try:
+                            clean = canceller.process(blocks[0].mean(axis=1) / 32768, blocks[1].mean(axis=1) / 32768)
+                            blocks[0] = np.rint(clean[:, None] * 32768).astype(np.int32)
+                        except (RuntimeError, ValueError) as error:
+                            warning = f'Echo cancellation stopped: {error}. Original audio is preserved.'
+                            canceller.close()
+                            canceller = None
+                    mixed = blocks[0] + blocks[1]
                     output.writeframes((mixed // 2).astype('<i2').tobytes())
             os.replace(temporary, path)
         finally:
+            if canceller is not None:
+                canceller.close()
             Path(temporary).unlink(missing_ok=True)
+        return warning
 
 
 class CaptionDraft:

@@ -60,6 +60,7 @@ class CaptionDefaults:
     model: str = "base"
     audio_source: str = "both"
     output_mode: str = "headphones"
+    echo_cancellation: bool = True
     font_size: int = 24
     always_on_top: bool = True
 

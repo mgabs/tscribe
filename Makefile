@@ -9,7 +9,7 @@ ARCH := $(shell uname -m)
 APP := dist/tscribe.app
 ARCHIVE := dist/tscribe-$(VERSION)-macos-$(ARCH).zip
 
-.PHONY: help setup pre-commit lint test test-clock test-swift test-regressions test-menu-bar check cli app package checksums dist install run clean-dist clean
+.PHONY: help setup pre-commit lint test test-clock test-swift test-regressions test-menu-bar audio-dsp check cli app package checksums dist install run clean-dist clean
 
 help:
 	@printf '%s\n' \
@@ -20,6 +20,7 @@ help:
 	  'make test-regressions  Run clock and strict Swift regression checks' \
 	  'make test-menu-bar  Verify the real icon, menu, and hide/restore behavior' \
 	  'make cli         Build the Python wheel and source distribution' \
+	  'make audio-dsp   Build the local speaker echo cancellation library' \
 	  'make app         Build the self-contained macOS app' \
 	  'make package     Build and zip the macOS app' \
 	  'make dist        Replace dist with the current release and checksums' \
@@ -57,6 +58,9 @@ check: lint test test-regressions
 
 test-menu-bar:
 	$(UV) run --locked --group dev python packaging/macos/test_menu_bar.py
+
+audio-dsp:
+	$(UV) run --locked python packaging/macos/build_audio_dsp.py
 
 # Hold one lock for the entire requested operation, including recursive Make.
 ifndef TSCRIBE_BUILD_LOCK_HELD

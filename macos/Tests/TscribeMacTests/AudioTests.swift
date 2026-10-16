@@ -57,6 +57,7 @@ final class WorkerTests: XCTestCase {
         XCTAssertNil(model.error)
         model.captionAudioSource = "both"
         model.captionOutputMode = "speakers"
+        model.echoCancellation = false
         model.captionFontSize = 36
         model.captionsAlwaysOnTop = false
         await model.saveSettings()
@@ -67,6 +68,7 @@ final class WorkerTests: XCTestCase {
         XCTAssertNil(reopened.error)
         XCTAssertEqual(reopened.captionAudioSource, "both")
         XCTAssertEqual(reopened.captionOutputMode, "speakers")
+        XCTAssertFalse(reopened.echoCancellation)
         XCTAssertEqual(reopened.captionFontSize, 36)
         XCTAssertFalse(reopened.captionsAlwaysOnTop)
     }

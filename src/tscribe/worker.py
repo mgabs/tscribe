@@ -70,6 +70,12 @@ class Worker:
         if command == 'prepare-recording':
             stem = manager.generate_session_stem()
             return {'stem': stem, 'wav_path': str(self.recording_path(manager, stem)), 'config': config._to_dict()}
+        if command == 'check-echo':
+            import numpy as np
+            from tscribe.echo import EchoCanceller
+            with EchoCanceller() as canceller:
+                canceller.process(np.zeros(160, dtype=np.float32), np.zeros(160, dtype=np.float32))
+            return {'available': True, 'engine': 'SpeexDSP 1.2.1'}
         if command == 'live-caption':
             return self.live_caption(request, config, manager)
         if command in ('finish-recording', 'transcribe'):
@@ -77,12 +83,13 @@ class Worker:
             path = self.recording_path(manager, stem)
             if not path.is_file():
                 raise FileNotFoundError(f'Recording not found: {path}')
+            warning = None
             if command == 'finish-recording':
                 # Read the completed WAV rather than trusting caller-supplied duration.
                 import wave
                 if request.get('source') == 'meeting':
                     from tscribe.live import mix_recording
-                    mix_recording(path, request.get('track_offsets', {}))
+                    warning = mix_recording(path, request.get('track_offsets', {}), echo_cancellation=self.use_echo(config))
                 with wave.open(str(path)) as audio:
                     rate, channels = audio.getframerate(), audio.getnchannels()
                     duration = audio.getnframes() / rate
@@ -91,8 +98,8 @@ class Worker:
                 result = RecordingResult(path, duration, rate, channels, request.get('device', 'native'), request.get('source', 'microphone'))
                 manager.write_metadata(stem, manager.create_metadata(result))
                 if not config.recording.auto_transcribe:
-                    return {**self.snapshot(config, manager), 'message': 'Recording saved', 'text': self.caption_text(path)}
-            return self.transcribe(request, config, manager, stem, path)
+                    return {**self.snapshot(config, manager), 'message': 'Recording saved', 'text': self.caption_text(path), 'warning': warning or ''}
+            return {**self.transcribe(request, config, manager, stem, path), 'warning': warning or ''}
         if command == 'read-transcript':
             path = self.recording_path(manager, request.get('stem'))
             if path.with_suffix('.txt').is_file():
@@ -104,6 +111,10 @@ class Worker:
                 return {'text': result.to_txt()}
             return {'text': self.caption_text(path) or 'No text transcript is available. Select Transcribe to create one.'}
         raise ValueError(f'Unknown worker command: {command!r}')
+
+    @staticmethod
+    def use_echo(config):
+        return config.captions.output_mode == 'speakers' and config.captions.echo_cancellation
 
     @staticmethod
     def caption_text(path):
@@ -125,11 +136,22 @@ class Worker:
         if not isinstance(offsets, dict) or not offsets or set(offsets) - {'microphone', 'system'}:
             raise ValueError('Caption tracks must be microphone and/or system')
         tracks = []
-        for source, offset in offsets.items():
+        for source in ('microphone', 'system'):
+            if source not in offsets:
+                continue
+            offset = offsets[source]
             if type(offset) not in (int, float):
                 raise ValueError('Caption track offsets must be numbers')
             tracks.append((path.parent / '.live' / stem / f'{sequence}-{source}.wav', offset))
-        samples, start, end = read_window(tracks)
+        from tscribe.echo import EchoUnavailable
+        use_echo = self.use_echo(config) and len(tracks) == 2
+        warning = ''
+        try:
+            samples, start, end = read_window(tracks, echo_cancellation=use_echo)
+        except EchoUnavailable as error:
+            warning = str(error)
+            samples, start, end = read_window(tracks)
+            use_echo = False
         key = (config.captions.model, config.transcription.gpu)
         if key != self._model_key:
             self._transcriber = Transcriber(model_name=key[0], device='cuda' if key[1] else 'cpu')
@@ -143,7 +165,7 @@ class Worker:
             self._caption_draft = CaptionDraft()
         result = self._caption_draft.update(words, start, end, sequence)
         self._caption_draft.save(path)
-        return result
+        return {**result, 'echo_active': use_echo, 'warning': warning}
 
     def transcribe(self, request, config, manager, stem, path):
         from tscribe.transcriber import Transcriber

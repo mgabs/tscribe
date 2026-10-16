@@ -280,3 +280,11 @@ def test_existing_config_gets_caption_defaults(tmp_path):
     assert config.captions.font_size == 24
     assert config.captions.always_on_top is True
     assert config.transcription.model == 'tiny'
+
+
+@pytest.mark.parametrize('value', ['false', 'true'])
+def test_echo_preference_roundtrip(tmp_path, value):
+    config = TscribeConfig()
+    config.set('captions.echo_cancellation', value)
+    config.save(tmp_path / 'config.toml')
+    assert TscribeConfig.load(tmp_path / 'config.toml').captions.echo_cancellation is (value == 'true')

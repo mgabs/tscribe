@@ -25,7 +25,8 @@
 
 - [x] Save caption preferences in shared config and expose app/menu settings.
 - [x] Capture microphone and system audio together, retaining separate tracks.
-- [ ] Validate echo cancellation with speakers, overlapping speech, and headphones.
+- [x] Add experimental reference-based speaker echo reduction to caption windows and final mixing, preserving original tracks.
+- [ ] Validate echo cancellation with real speakers, overlapping speech, headphones, changing room paths, and long playback delays.
 - [ ] Handle output-device changes during a meeting.
 - [x] Stream stable phrases with a provisional last phrase; keep capture independent of transcription.
 - [x] Add a floating captions window using saved size and always-on-top preferences.

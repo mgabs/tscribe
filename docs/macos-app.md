@@ -91,7 +91,8 @@ model. First use downloads that model; later use can run offline. Language uses
 ```bash
 tscribe config captions.enabled true
 tscribe config captions.model base
-tscribe config captions.output_mode headphones
+tscribe config captions.output_mode speakers
+tscribe config captions.echo_cancellation true
 tscribe config captions.audio_source both
 tscribe config captions.font_size 32
 tscribe config captions.always_on_top true
@@ -120,12 +121,25 @@ stopping. Caption snapshots use `recordings/.live/STEM/` and are removed when th
 caption session ends. Normal session deletion/cleanup includes the drafts and
 retained tracks. A crash can leave temporary snapshots in `.live`.
 
-**Speaker mode is experimental.** This version has no acoustic echo cancellation;
-remote voices leaking into the microphone may repeat or reduce accuracy. The
-Headphones/Speakers choice records your setup and shows guidance; it does not
-apply an echo filter. Real-call quality, echo handling, output-device changes,
-and sustained CPU/power use still need validation. Live capture is currently a
-native-app feature; the Python CLI retains recording and final transcription.
+**Speaker mode is experimental.** With **Microphone + system audio** and
+**Reduce speaker echo** enabled, SpeexDSP uses system playback as the reference
+and removes its acoustic copy from microphone audio. Both live caption windows
+and the saved final mix use that cleaned microphone plus the original system
+audio. The untouched source tracks stay in `.tracks/STEM/`. Headphones mode,
+single-source recording, and disabling the option bypass the filter.
+
+If the DSP library is unavailable or the recording uses an unsupported sample
+rate, the app reports a warning and continues with the original audio mix. The
+final mix supports 8, 16, 32, and 48 kHz; live captions use 16 kHz snapshots.
+Do not treat synthetic echo tests as real-call validation: room reverberation,
+long playback delays, simultaneous speakers, device changes, and sustained power
+use still need field testing. Live capture is currently a native-app feature;
+the Python CLI retains recording and final transcription.
+
+The app bundles its pinned SpeexDSP 1.2.1 echo core and license notices. Users do
+not need a compiler or an external DSP installation. For development, run
+`make audio-dsp`; the native app builder does this automatically. See
+[vendor/speexdsp](../vendor/speexdsp/README.md) for source provenance.
 
 Completion notifications request permission when first needed. Worker diagnostics
 are appended to `~/Library/Logs/tscribe/worker.log`. Errors also appear in the main

@@ -240,7 +240,7 @@ struct MainView: View {
                     }.padding().frame(maxWidth: .infinity, alignment: .leading).background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                 }
                 if model.captionOutputMode == "speakers", model.captionAudioSource == "both" {
-                    Text("Speaker mode is experimental: microphone echo may repeat remote voices. Headphones give cleaner captions.")
+                    Text(model.echoCancellation ? "Speaker echo reduction is experimental. Original microphone and system audio tracks are preserved." : "Speaker echo reduction is off. Remote voices may repeat in microphone audio.")
                         .font(.caption).foregroundStyle(.orange)
                 }
                 HStack {
@@ -323,9 +323,11 @@ struct SettingsView: View {
                         Text("Headphones").tag("headphones")
                         Text("Speakers").tag("speakers")
                     }
+                    Toggle("Reduce speaker echo (experimental)", isOn: $model.echoCancellation)
+                        .disabled(model.captionOutputMode != "speakers" || model.captionAudioSource != "both")
                     Stepper("Caption size: \(model.captionFontSize) pt", value: $model.captionFontSize, in: 12...72)
                     Toggle("Keep captions above other windows", isOn: $model.captionsAlwaysOnTop)
-                    Text("Uses the transcription language above. Speaker mode has no echo cancellation yet; remote voices may repeat when using both sources.").font(.caption).foregroundStyle(.secondary)
+                    Text("Uses the transcription language above. Echo reduction uses system audio as a reference in speaker mode with both sources. Headphones bypass it.").font(.caption).foregroundStyle(.secondary)
                 }
                 Text("Shared with the Python CLI. Advanced audio and output settings are in config.toml.").font(.caption).foregroundStyle(.secondary)
             }.formStyle(.grouped)
