@@ -12,7 +12,7 @@ struct TscribeNativeApp: App {
                 .task { if model.phase == "loading" { await model.bootstrap() } }
         }
         .defaultSize(width: 900, height: 620)
-        .commands { TscribeCommands(model: model, delegate: delegate) }
+        .commands { tscribeCommands(model: model, delegate: delegate) }
 
         Window("Live captions", id: "captions") {
             CaptionsView(model: model, captions: model.liveCaptions)
@@ -20,22 +20,29 @@ struct TscribeNativeApp: App {
     }
 }
 
-struct TscribeCommands: Commands {
+@MainActor
+@CommandsBuilder
+private func tscribeCommands(model: AppModel, delegate: AppDelegate) -> some Commands {
+    CommandGroup(replacing: .appSettings) {
+        SettingsCommand(model: model, delegate: delegate)
+    }
+    CommandGroup(replacing: .windowSize) {
+        Button("Minimize to Menu Bar") { delegate.hideToMenuBar() }.keyboardShortcut("m")
+        Button("Zoom") { NSApp.keyWindow?.performZoom(nil) }
+    }
+    CommandGroup(replacing: .appTermination) {
+        Button("Quit tscribe") { model.quit() }.keyboardShortcut("q")
+    }
+}
+
+/// Keep menu enablement reactive without an actor-isolated Commands witness.
+private struct SettingsCommand: View {
     @ObservedObject var model: AppModel
     let delegate: AppDelegate
 
-    var body: some Commands {
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings…") { delegate.showSettings() }.keyboardShortcut(",")
-                .disabled(model.busy)
-        }
-        CommandGroup(replacing: .windowSize) {
-            Button("Minimize to Menu Bar") { delegate.hideToMenuBar() }.keyboardShortcut("m")
-            Button("Zoom") { NSApp.keyWindow?.performZoom(nil) }
-        }
-        CommandGroup(replacing: .appTermination) {
-            Button("Quit tscribe") { model.quit() }.keyboardShortcut("q")
-        }
+    var body: some View {
+        Button("Settings…") { delegate.showSettings() }.keyboardShortcut(",")
+            .disabled(model.busy)
     }
 }
 
@@ -67,8 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installStatusItem()
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(showMainWindow), name: Notification.Name("com.tscribe.show-main"), object: nil)
         DispatchQueue.main.async { self.showMainWindow() }
-        if let index = CommandLine.arguments.firstIndex(of: "--smoke-report"), CommandLine.arguments.count > index + 1 {
-            let report = CommandLine.arguments[index + 1]
+        if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--smoke-report"), ProcessInfo.processInfo.arguments.count > index + 1 {
+            let report = ProcessInfo.processInfo.arguments[index + 1]
             smokeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in self?.checkLaunch(report: report) }
             }
@@ -144,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var result: [String: Any] = ["window_visible": visible, "worker_ready": ready, "native_ui": true, "error": model.error ?? "", "status_item_visible": statusController?.isReachable == true, "status_item": statusController?.diagnostics ?? [:]]
         Task { @MainActor in
             let originalStatusItem = self.statusController
-            if CommandLine.arguments.contains("--smoke-menu-bar"), let window = mainWindows.first {
+            if ProcessInfo.processInfo.arguments.contains("--smoke-menu-bar"), let window = mainWindows.first {
                 result["menu_opens"] = self.statusController?.checkMenuOpens() == true
                 // Exercise the actual traffic-light actions as well as Cmd-M's
                 // native miniaturization path. Let AppKit notifications settle.

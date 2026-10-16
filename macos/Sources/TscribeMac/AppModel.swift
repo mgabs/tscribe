@@ -50,7 +50,7 @@ final class AppModel: ObservableObject {
     private var recordingSource = "microphone"
     private var quitting = false
     private var menuTimer: Timer?
-    private let diarizeOverride: Bool? = CommandLine.arguments.contains("--diarize") ? true : (CommandLine.arguments.contains("--no-diarize") ? false : nil)
+    private let diarizeOverride: Bool? = ProcessInfo.processInfo.arguments.contains("--diarize") ? true : (ProcessInfo.processInfo.arguments.contains("--no-diarize") ? false : nil)
     private var transcriptCache: [String: String] = [:]
     var busy: Bool { phase != "idle" }
 
