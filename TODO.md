@@ -11,3 +11,11 @@ Uncommitted
 - [x] add `rm` / `clean` command to manage old recordings (`tscribe clean [--30]`)
 - [x] macOS menu bar status item app (`tscribe app [--install-desktop]`)
 
+
+## Native macOS app and transcription engine
+
+- [ ] Evaluate WhisperKit as a replacement for the bundled Python transcription worker only after validating:
+  - Transcription quality against faster-whisper on the same representative recordings, including different languages, accents, noise levels, and overlapping speech.
+  - Performance on supported Apple Silicon Macs: model loading, first-run downloads, transcription speed, peak memory, and energy use.
+  - Feature parity: language detection/selection, model choices, timestamps, TXT/JSON/SRT/VTT export, progress reporting, speaker grouping/names, configuration, CLI integration, and offline behavior after model download.
+- [ ] Record benchmark results and migration tradeoffs before choosing a native transcription engine.

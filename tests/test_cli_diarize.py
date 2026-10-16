@@ -157,7 +157,9 @@ def test_cli_record_diarize_flags(monkeypatch, tmp_path):
         source_type="microphone",
     )
 
-    import threading, time, signal
+    import threading
+    import time
+    import signal
 
     def fake_create(cfg):
         def trigger_stop():

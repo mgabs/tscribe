@@ -1,3 +1,6 @@
+> Historical document: the Python/rumps interface described here was retired.
+> See [the native macOS app](../../macos-app.md) for the current architecture.
+
 # Design: macOS Menu Bar App (`tscribe app`)
 
 **Status:** Draft / Pending Review  

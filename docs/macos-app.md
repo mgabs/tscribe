@@ -1,96 +1,142 @@
-# CLI and self-contained macOS app
+# Native macOS app and Python CLI
 
-The project provides a cross-platform CLI and a macOS menu bar app backed by
-the same configuration, recordings, and transcription code.
+The macOS app uses **SwiftUI** for its window, menu bar controls and settings,
+**AVFoundation** for microphone capture, and **ScreenCaptureKit** for system
+audio. Its Python transcription worker is bundled inside the app. Recipients do
+not need to install Python. The cross-platform Python CLI remains available.
 
-## CLI
+The app requires macOS 14 or later. Build separately on Apple Silicon and Intel
+for the architecture you intend to distribute.
+
+## Build and run
+
+Build with Xcode or its Swift toolchain installed:
 
 ```bash
-uv tool install .
-tscribe --help
-tscribe record --mic
-tscribe transcribe meeting.wav --output exports/meeting --format txt,json
+make setup
+make app
+open dist/tscribe.app
 ```
 
-## Build the self-contained app
+The app opens a recording/transcript window and also adds menu bar controls.
+Closing or minimizing the window hides it to the menu bar and removes its Dock
+icon. **Hide to Menu Bar** does the same. Click the microphone icon and choose
+**Open tscribe**, or launch the app again from Finder, to restore the window and
+Dock icon. Recording and transcription continue while the window is hidden. Starting a second native instance
+activates the existing app.
 
-Build on macOS for the architecture you want to distribute. An Apple Silicon
-build targets Apple Silicon; build separately on Intel for Intel Macs. The
-bundle includes Python, the audio libraries, Whisper runtime, Silero VAD model,
-and icons. No separate Python installation is needed on the recipient's Mac.
+To install the build in `~/Applications` (quit the previous app first):
 
 ```bash
-uv sync --group mac-app
-uv run --group mac-app pyinstaller --noconfirm packaging/macos/tscribe.spec
+make install
+make run
 ```
 
-The result is `dist/tscribe.app`. Copy it to `/Applications` or
-`~/Applications` and open it from Finder. A microphone icon appears in the menu
-bar; the app runs without a Dock window. Its menu supports microphone and
-system audio recording, stopping, speaker labeling, recent recordings,
-opening configuration, and opening the recordings folder.
+Installation preserves an existing app in a hidden `.tscribe-backup-*` directory
+beside it. `TSCRIBE_APP_PATH` can select a native app at another location.
 
-Quitting while recording finishes saving and any automatic transcription before
-exiting. Whisper models download on the first transcription; allow time for
-that initial download. Audio and transcription remain local. Speaker diarization
-is experimental: the current algorithm clusters amplitude histograms rather than
-voice embeddings and can confuse different people or recording conditions.
+## Recording and permissions
 
-Microphone access must be allowed in macOS Privacy & Security settings. System
-audio requires the [BlackHole and Multi-Output setup](macos-system-audio.md).
-The app uses `recording.default_device` for microphone recordings and detects
-a loopback device separately for system-audio recordings. Supported sample rates
-use the configured value; unsupported rates fall back to the device's native
-rate, which is saved in the recording metadata.
-Select that Multi-Output Device before using Record System Audio in the app;
-automatic output switching currently belongs to the CLI recording command.
+- **Record Microphone** requests microphone access when first used.
+- **Record System Audio** requests macOS screen/system-audio capture permission.
+  The native app does not require BlackHole or output-device switching. It saves
+  only audio; it does not save screen video. macOS may require you to quit and
+  reopen the app after changing capture permission.
+- **Stop** finalizes the WAV, saves session metadata, and transcribes if enabled.
+- Quitting during recording/transcription finishes the active job before exiting.
 
-The app and CLI share the file shown by `tscribe config --path`. Restart the app
-after changing configuration. Finder launch errors are shown in a dialog;
-logs are written to `~/Library/Logs/tscribe/tscribe.log`.
+The app uses `recording.default_device` for the microphone: leave it empty for
+the system default, or specify a native device name/unique ID. PortAudio numeric
+device indexes from the Python CLI are not native device IDs. Audio is converted
+to the configured sample rate and channel count before being written as PCM WAV.
 
-## Verify the bundle
+Whisper models download on first transcription. Audio is processed locally.
+Experimental speaker grouping still uses the Python algorithm; replacing it with
+WhisperKit/SpeakerKit requires the quality, performance and parity evaluation in
+[TODO.md](../TODO.md).
 
-These commands run the bundled runtime, independent of your virtual environment:
+## Shared configuration and recordings
+
+The app reads and writes the same TOML settings and session files as the CLI.
+Use `tscribe config --path` to find the active configuration file. The window's
+Settings form covers model, language, automatic transcription, speaker grouping,
+notifications and recent recordings. **Open config.toml** exposes the remaining
+settings. Reopen the app after editing the file externally.
+
+Completion notifications request permission when first needed. Worker diagnostics
+are appended to `~/Library/Logs/tscribe/worker.log`. Errors also appear in the main
+window, including missing permissions, model download failures and worker exits.
+
+## Verification
 
 ```bash
-dist/tscribe.app/Contents/MacOS/tscribe --self-test
-dist/tscribe.app/Contents/MacOS/tscribe --cli --version
-dist/tscribe.app/Contents/MacOS/tscribe --cli --help
+make check
+
+# Native audio conversion and Python worker integration, using isolated files
+TSCRIBE_PYTHON_EXECUTABLE="$PWD/.venv/bin/python" \
+TSCRIBE_CONFIG_FILE=/tmp/tscribe-tests/config.toml \
+TSCRIBE_DATA_DIR=/tmp/tscribe-tests/data \
+TSCRIBE_LOG_DIR=/tmp/tscribe-tests/logs \
+  swift test --package-path macos --scratch-path build/swift
+
+# Real launch check: requires a visible main window and a responding worker
+# Quit any running native tscribe instance before this check.
+open -n -W --env TSCRIBE_CONFIG_FILE=/tmp/tscribe-ui-check/config.toml \
+  --env TSCRIBE_DATA_DIR=/tmp/tscribe-ui-check/data \
+  dist/tscribe.app --args --smoke-report /tmp/tscribe-ui-check.json --smoke-menu-bar
+cat /tmp/tscribe-ui-check.json
+
 codesign --verify --deep --strict dist/tscribe.app
 ```
 
-`--self-test` loads bundled native audio, VAD, transcription and clustering
-libraries without recording audio or downloading a Whisper model. It does not
-replace a manual microphone/system-audio recording check on the destination Mac.
-Use `--cli` to access the CLI from the bundle when Python is not installed.
-URL imports via yt-dlp additionally require an `ffmpeg` executable on your PATH;
-local audio transcription uses the bundled PyAV libraries.
+The launch check never records audio or grants capture permission. Audio tests
+exercise WAV conversion using synthetic samples, not microphone input. A real
+microphone/system-audio recording check still requires user permission.
+
+## Python CLI
+
+```bash
+uv tool install .
+tscribe record --mic
+tscribe transcribe meeting.wav --output exports/meeting --format txt,json
+tscribe app
+```
+
+The bundled worker also exposes the CLI without an external Python installation:
+
+```bash
+dist/tscribe.app/Contents/Resources/Worker/tscribe-worker --cli --help
+```
+
+The Python recording command retains its cross-platform audio backends. Its macOS
+system-audio capture still uses [BlackHole](macos-system-audio.md).
 
 ## Distribution
 
-A default build is ad-hoc signed for local testing. Public distribution needs a
-Developer ID Application certificate and Apple notarization. Build with your
-existing signing identity:
+`make dist` clears old distribution outputs and creates the current wheel,
+source archive, `tscribe.app`, `tscribe-VERSION-macos-ARCH.zip`, and `SHA256SUMS`. The worker's
+intermediate directory stays in `build/worker-dist`, outside `dist/`. Build and
+cleanup commands share a lock: wait for an active operation to finish before
+starting another. A failed app build preserves the last complete app; a ZIP
+replaces its previous version only after archive verification succeeds.
+
+Pushing a matching version tag (for example `v2.1.0`) triggers the GitHub release
+workflow. It runs CI, builds both Apple Silicon (`arm64`) and Intel (`x86_64`)
+archives, checks each bundled worker, and publishes the packages plus SHA256
+checksums. No PyPI upload or Apple notarization occurs automatically.
+
+A default build is ad-hoc signed for local testing. Public distribution still
+needs a Developer ID Application certificate and Apple notarization:
 
 ```bash
 TSCRIBE_CODESIGN_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
-  uv run --group mac-app pyinstaller --noconfirm packaging/macos/tscribe.spec
+  uv run --group mac-app python packaging/macos/build_native.py
 
 ditto -c -k --sequesterRsrc --keepParent dist/tscribe.app dist/tscribe-macos.zip
 xcrun notarytool submit dist/tscribe-macos.zip --keychain-profile YOUR_PROFILE --wait
 xcrun stapler staple dist/tscribe.app
-# Recreate the archive after stapling before sending it to recipients.
 ditto -c -k --sequesterRsrc --keepParent dist/tscribe.app dist/tscribe-macos-notarized.zip
 ```
 
-Use a keychain profile you have already configured for your Apple developer
-account. Building and local signature verification do not confirm notarization.
-See the [PyInstaller macOS signing documentation](https://pyinstaller.org/en/stable/feature-notes.html#macos-binary-code-signing).
-
-## Lightweight launcher
-
-For development, `tscribe app` runs from the installed Python environment.
-`tscribe app --install-desktop` creates a Finder launcher in
-`~/Applications/tscribe.app`; this small launcher depends on that Python
-installation. Use the self-contained build above for sharing with others.
+Use a keychain profile already configured for your Apple developer account.
+A local build or signature verification does not confirm notarization.

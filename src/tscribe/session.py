@@ -195,8 +195,8 @@ class SessionManager:
         """
         deleted: list[Path] = []
         bytes_freed = 0
-        for f in self.recordings_dir.glob(f"{stem}.*"):
-            if f.is_file():
+        for f in self.recordings_dir.iterdir():
+            if f.stem == stem and f.is_file():
                 try:
                     size = f.stat().st_size
                     f.unlink()
@@ -229,7 +229,7 @@ class SessionManager:
             session_date = None
 
             try:
-                session_date = datetime.strptime(stem[:10], "%Y-%m-%d")
+                session_date = datetime.strptime(stem[:17], "%Y-%m-%d-%H%M%S")
             except (ValueError, IndexError):
                 pass
 
@@ -243,7 +243,7 @@ class SessionManager:
             if cutoff_date is not None and session_date > cutoff_date:
                 continue
 
-            session_files = [f for f in self.recordings_dir.glob(f"{stem}.*") if f.is_file()]
+            session_files = [f for f in self.recordings_dir.iterdir() if f.stem == stem and f.is_file()]
             total_size = sum(f.stat().st_size for f in session_files if f.exists())
 
             if dry_run:

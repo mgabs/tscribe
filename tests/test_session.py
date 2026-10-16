@@ -200,7 +200,7 @@ class TestSearchTranscripts:
         assert "2025-01-12-100000" in stems
         # Check matching lines are returned
         for info, lines in results:
-            assert any("action items" in l.lower() for l in lines)
+            assert any("action items" in line.lower() for line in lines)
 
 
 class TestImportExternal:

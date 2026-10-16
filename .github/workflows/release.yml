@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.12'
+      - name: Match stable tag to both project versions
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          uv run --no-project python - <<'PY'
+          import os
+          import re
+          import runpy
+          import tomllib
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          package_version = runpy.run_path('src/tscribe/__init__.py')['__version__']
+          if not re.fullmatch(r'v\d+\.\d+\.\d+', tag) or tag != f'v{version}' or package_version != version:
+              raise SystemExit(f'Tag {tag} must match project/package versions {version}/{package_version}')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              output.write(f'version={version}\n')
+          PY
+
+  checks:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  cli:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - run: make cli
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-cli
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  macos:
+    needs: [version, checks]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-15-intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Build the native app archive
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          make package
+      - name: Verify app signature, packaged worker, and archive
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          codesign --verify --deep --strict dist/tscribe.app
+          test "$(dist/tscribe.app/Contents/Resources/Worker/tscribe-worker --cli --version)" = "tscribe, version $VERSION"
+          unzip -tq "dist/tscribe-$VERSION-macos-$ARCH.zip"
+          uv run --locked python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import tempfile
+          with tempfile.TemporaryDirectory() as directory:
+              env = dict(os.environ, TSCRIBE_CONFIG_FILE=f'{directory}/config.toml', TSCRIBE_DATA_DIR=f'{directory}/data')
+              result = subprocess.run(
+                  ['dist/tscribe.app/Contents/Resources/Worker/tscribe-worker'],
+                  input=json.dumps({'id': 'release', 'command': 'bootstrap'}) + '\n',
+                  text=True, capture_output=True, check=True, env=env, timeout=30,
+              )
+              assert json.loads(result.stdout)['event'] == 'result', result.stdout
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-macos-${{ matrix.arch }}
+          path: dist/*-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [version, cli, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Create checksums and release notes
+        run: |
+          cd dist
+          sha256sum ./*.whl ./*.tar.gz ./*.zip > SHA256SUMS
+          cat > ../release-notes.md <<'NOTES'
+          Includes the Python CLI and self-contained macOS apps for Apple Silicon and Intel.
+          Choose the macOS archive matching your processor. Models download on first use; transcription runs locally.
+
+          macOS apps are ad-hoc signed, not Apple notarized. Developer ID signing and notarization are separate steps described in docs/macos-app.md.
+          NOTES
+      - name: Publish all verified assets together
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if state=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
+            if [ "$state" != true ]; then
+              echo '::error::This release is already published; refusing to replace its assets.'
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --draft --verify-tag \
+              --title "tscribe $RELEASE_TAG" --generate-notes --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" dist/*.whl dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

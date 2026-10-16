@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 from click.testing import CliRunner
 
+from tscribe import __version__
 from tscribe.cli import main
 from tscribe.recorder import MockRecorder
 
@@ -33,7 +34,7 @@ def test_version():
     runner = CliRunner()
     result = runner.invoke(main, ["--version"])
     assert result.exit_code == 0
-    assert "1.0.0" in result.output
+    assert __version__ in result.output
 
 
 def test_subcommands_registered():
@@ -53,7 +54,8 @@ def _run_record_with_mock(monkeypatch, tmp_path, extra_args=None):
 
     def fake_create(cfg):
         def trigger_stop():
-            import time, signal
+            import time
+            import signal
             time.sleep(0.1)
             signal.raise_signal(signal.SIGINT)
         threading.Thread(target=trigger_stop, daemon=True).start()
@@ -95,7 +97,8 @@ def test_record_with_auto_transcribe_failure(monkeypatch, tmp_path):
 
     def fake_create(cfg):
         def trigger_stop():
-            import time, signal
+            import time
+            import signal
             time.sleep(0.1)
             signal.raise_signal(signal.SIGINT)
         threading.Thread(target=trigger_stop, daemon=True).start()

@@ -104,3 +104,40 @@ def test_cli_clean_with_30_shortcut_flag(tmp_path):
     assert "Deleted 1 session" in res.output
     assert not (tmp_path / f"{old_stem}.wav").exists()
     assert (tmp_path / f"{recent_stem}.wav").exists()
+
+
+def test_clean_respects_time_of_day_at_cutoff(tmp_path):
+    from unittest.mock import patch
+    mgr = SessionManager(tmp_path)
+    old = tmp_path / '2026-09-15-110000.wav'
+    recent = tmp_path / '2026-09-15-130000.wav'
+    old.write_bytes(b'old')
+    recent.write_bytes(b'recent')
+    with patch('tscribe.session.datetime', wraps=datetime) as clock:
+        clock.now.return_value = datetime(2026, 10, 15, 12, 0, 0)
+        cleaned = mgr.clean_sessions(older_than_days=30)
+    assert [item[0] for item in cleaned] == [old.stem]
+    assert recent.exists()
+
+
+def test_delete_session_treats_filename_as_literal(tmp_path):
+    mgr = SessionManager(tmp_path)
+    wav = tmp_path / 'meeting[1].wav'
+    txt = tmp_path / 'meeting[1].txt'
+    other = tmp_path / 'meeting1.wav'
+    for path in (wav, txt, other):
+        path.write_bytes(b'data')
+    deleted, _ = mgr.delete_session('meeting[1]')
+    assert set(deleted) == {wav, txt}
+    assert other.exists()
+
+
+def test_delete_session_preserves_other_dotted_sessions(tmp_path):
+    mgr = SessionManager(tmp_path)
+    first = tmp_path / 'meeting.wav'
+    second = tmp_path / 'meeting.v2.wav'
+    first.write_bytes(b'one')
+    second.write_bytes(b'two')
+    mgr.delete_session(first.stem)
+    assert not first.exists()
+    assert second.exists()

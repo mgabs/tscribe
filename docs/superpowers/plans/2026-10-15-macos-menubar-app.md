@@ -1,3 +1,6 @@
+> Historical document: the Python/rumps interface described here was retired.
+> See [the native macOS app](../../macos-app.md) for the current architecture.
+
 # macOS Menu Bar App Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

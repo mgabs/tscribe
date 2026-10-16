@@ -9,8 +9,9 @@ build/
 .venv/
 .env
 .uv/
-uv.lock
 .pytest_cache/
+.ruff_cache/
+.tscribe-build.lock
 .coverage
 htmlcov/
 *.wav
@@ -20,3 +21,5 @@ mutants/
 .mutmut-cache
 
 !packaging/macos/*.spec
+macos/.build/
+macos/.swiftpm/

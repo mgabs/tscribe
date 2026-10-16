@@ -1208,28 +1208,34 @@ def clean(days, days_30, yes, dry_run, custom_dir):
 
 @main.command()
 @click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization by default.")
-@click.option("--install-desktop", is_flag=True, help="Create ~/Applications/tscribe.app launcher.")
+@click.option("--install-desktop", is_flag=True, help="Install the built native app in ~/Applications.")
 def app(diarize, install_desktop):
-    """Launch macOS menu bar status item app."""
+    """Open the native macOS recording app and menu bar controls."""
     if sys.platform != "darwin":
         raise click.ClickException("The 'app' command is only supported on macOS.")
 
+    import subprocess
+    from tscribe.desktop import find_native_app, install_native_app
+
+    bundle = find_native_app(prefer_build=install_desktop)
+    if bundle is None:
+        raise click.ClickException(
+            "Native macOS app not found. Build it with 'uv run --group mac-app python "
+            "packaging/macos/build_native.py', or set TSCRIBE_APP_PATH to a native .app bundle."
+        )
     if install_desktop:
-        from tscribe.desktop import install_desktop_launcher
-
-        app_path = install_desktop_launcher()
-        click.echo(f"Installed desktop launcher: {app_path}")
+        bundle = install_native_app(bundle)
+        click.echo(f"Installed native app: {bundle}")
         return
-
-    from tscribe.app import TscribeApp
-
-    app_instance = TscribeApp(diarize=diarize, config=_load_config())
-    click.echo("Running tscribe in macOS menu bar (top-right of screen near clock).")
-    click.echo("Look for the tscribe microphone icon in the menu bar.")
-    app_instance.run()
+    arguments = ["open", str(bundle)]
+    if diarize is not None:
+        arguments.extend(["--args", "--diarize" if diarize else "--no-diarize"])
+    try:
+        subprocess.run(arguments, check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise click.ClickException(f"Could not launch native app: {exc}") from exc
+    click.echo("Opened native tscribe app and recording window.")
 
 
 if __name__ == "__main__":
     main()
-
-

@@ -32,6 +32,9 @@ https://private-user-images.githubusercontent.com/1709257/546508788-dcd6ee47-d2b
 
 ## Requirements
 
+The self-contained [native Mac app](docs/macos-app.md) requires macOS 14 or later.
+The following requirements apply to the Python CLI:
+
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Linux: PipeWire (for system audio capture)
@@ -81,7 +84,7 @@ tscribe dump
 | Command | Description |
 |---------|-------------|
 | `tscribe record` | Record system audio or microphone |
-| `tscribe app` | Launch native macOS menu bar status item app |
+| `tscribe app` | Open the native macOS recording app and menu bar controls |
 | `tscribe play [REF]` | Play a recording |
 | `tscribe open [REF]` | Open transcript in default program |
 | `tscribe dump [REF]` | Print transcript to stdout |
@@ -238,30 +241,28 @@ tscribe clean --30 -y
 
 Reports number of deleted sessions and total disk space freed.
 
-### Menu Bar App (macOS)
+### Native App (macOS)
 
-`tscribe` includes a native macOS menu bar application powered by `rumps`.
-A self-contained `.app` build includes Python and its dependencies; see
-[building and distributing the macOS app](docs/macos-app.md).
+The macOS app uses SwiftUI, opens a recording/transcript window on launch, and
+provides menu bar controls. It records microphone audio with AVFoundation and
+system audio with ScreenCaptureKit, without BlackHole. Python and the local
+transcription engine are bundled inside the app.
 
 ```bash
-# Launch menu bar app
-tscribe app
+make setup
+make app
+open dist/tscribe.app
 
-# Launch with speaker diarization enabled by default
-tscribe app --diarize
-
-# Install a lightweight Finder launcher (requires this Python installation)
-tscribe app --install-desktop
+# Install the native build, then open it from the CLI or Finder
+make install
+make run
 ```
 
-Features:
-- **Click-to-Record:** Start and stop Microphone or System Audio recordings from the status bar.
-- **Live Status:** Packaged microphone icon with elapsed recording time (`🔴 00:15`) and transcription status (`⏳ Transcribing...`).
-- **One-Click Actions:** Copy last transcript directly to macOS clipboard, open in default editor, or browse the last 5 sessions.
-- **Native Notifications:** Sends macOS banner alert with preview text when transcription finishes.
-- **Safe Quit:** Finishes saving and automatic transcription before exiting.
-- **Shared Settings:** Open configuration and recordings directly from the menu.
+Requires macOS 14+. The window provides recording controls, recent sessions,
+transcript viewing/copying, visible errors, and shared settings. Closing the
+window hides the app to the menu bar; choose **Open tscribe** from its microphone icon.
+
+See [native app build, permissions, verification and distribution](docs/macos-app.md).
 
 ### List
 
@@ -386,7 +387,7 @@ By default, `tscribe record` captures system audio (what you hear through your s
 | Windows | WASAPI loopback via [PyAudioWPatch](https://github.com/s0d3s/PyAudioWPatch) (auto-installed) |
 | macOS | Requires [BlackHole](https://github.com/ExistentialAudio/BlackHole) + Multi-Output Device. See [macOS setup guide](docs/macos-system-audio.md). |
 
-On macOS, tscribe will detect your setup and guide you: if BlackHole is missing it warns and falls back to the microphone, and if [switchaudio-osx](https://github.com/deweller/switchaudio-osx) is installed (`brew install switchaudio-osx`) it can automatically switch to your Multi-Output Device when recording and restore your previous output when done.
+On macOS, the CLI will detect your setup and guide you: if BlackHole is missing it warns and falls back to the microphone, and if [switchaudio-osx](https://github.com/deweller/switchaudio-osx) is installed (`brew install switchaudio-osx`) it can automatically switch to your Multi-Output Device when recording and restore your previous output when done. The native Mac app uses ScreenCaptureKit and does not require BlackHole.
 
 Run `tscribe devices --loopback` to see available loopback sources. Use `--device <id>` to record from a specific microphone or input device.
 
@@ -406,18 +407,46 @@ To manage and delete old recordings, run `tscribe clean` (e.g. `tscribe clean --
 ## Development
 
 ```bash
-# Install with dev dependencies
-uv sync
+make setup       # Install development and build dependencies from uv.lock
+make check       # Lint + Python tests + Swift/native-worker tests (macOS)
+make lint test   # Checks for the Python CLI on Linux/macOS
+make dist        # Remove old distributions and build the current release
+make help        # All targets, including cleanup, installation, and launch
 
-# Run tests
-uv run pytest
-
-# Run tests with coverage
-uv run pytest --cov=tscribe --cov-report=term-missing
-
-# Skip slow integration tests (require model download)
-uv run pytest -m "not slow"
+# Tests with coverage
+uv run --locked --group dev pytest --cov=tscribe --cov-report=term-missing
 ```
+
+`dist/` contains only the current wheel, source archive, macOS app, its ZIP, and
+`SHA256SUMS`.
+Worker intermediates live under `build/`. `make clean-dist` removes distribution
+files; `make clean` also removes build outputs and test caches. Build and cleanup
+commands share a lock, so overlapping invocations fail clearly instead of
+removing an app while it is being archived. Apps and ZIPs are staged and
+verified before replacing their previous outputs. Neither removes
+recordings, configuration, or the installed app.
+
+### CI and releases
+
+GitHub Actions runs lint and Python tests on Linux/Windows, plus native Swift and
+Python checks on Apple Silicon and Intel Macs. Dependency resolution is locked
+with `uv.lock`. Tests use synthetic audio and do not need capture permissions or
+Whisper model downloads.
+
+After committing/pushing the release changes, publish version 2.1.0 by pushing
+its matching tag:
+
+```bash
+git tag -a v2.1.0 -m "tscribe 2.1.0"
+git push origin v2.1.0
+```
+
+The release workflow rejects mismatched versions, waits for checks, builds the
+CLI packages and both Mac architectures, verifies packaged workers/signatures,
+and publishes a GitHub release with SHA256 checksums. Only the publishing job
+has write permission. It uses the repository's automatic `GITHUB_TOKEN`; no
+publishing token is needed. macOS packages are ad-hoc signed; Apple notarization
+still requires the developer credentials described in [the Mac app guide](docs/macos-app.md).
 
 Mutation testing uses [mutmut](https://mutmut.readthedocs.io/en/latest/) to
 deliberately alter code and check whether tests detect the changed behavior.
@@ -450,9 +479,12 @@ the tests check rejection of invalid values without requiring that punctuation.
 
 ## Architecture
 
+`macos/` contains the native SwiftUI app and audio capture. `packaging/macos/build_native.py` builds it with the Python worker.
+
 ```
 src/tscribe/
-├── app.py                # macOS menu bar application (rumps)
+├── worker.py             # JSON bridge for native macOS app
+├── desktop.py            # Native app discovery/installation
 ├── cli.py                # Click CLI with subcommands
 ├── config.py             # TOML configuration management
 ├── diarization.py        # Speaker diarization (Silero VAD + clustering)
