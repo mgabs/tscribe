@@ -51,7 +51,10 @@ jobs:
           enable-cache: true
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libportaudio2
-      - run: uv run --locked --group dev pytest
+      - name: Repeated and advancing clock regression
+        run: uv run --locked --group dev pytest tests/test_pipewire_recorder.py -k elapsed_seconds
+      - name: Full Python test suite
+        run: uv run --locked --group dev pytest
 
   native:
     name: Native app / ${{ matrix.os }}
@@ -60,7 +63,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15-intel]
+        include:
+          - os: macos-14
+            developer-dir: /Applications/Xcode_15.4.app/Contents/Developer
+          - os: macos-15-intel
+            developer-dir: /Applications/Xcode.app/Contents/Developer
+    env:
+      DEVELOPER_DIR: ${{ matrix.developer-dir }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -69,4 +78,7 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: true
-      - run: make check
+      - name: Report compiler version
+        run: swift --version
+      - name: Strict concurrency, runtime, and desktop checks
+        run: make check

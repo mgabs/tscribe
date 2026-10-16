@@ -2,6 +2,23 @@
 import CoreMedia
 import ScreenCaptureKit
 
+/// The converter may request input more than once; hand off this buffer only once.
+/// The lock protects the single mutable reference used by its sendable callback.
+final class ConverterInput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer: AVAudioPCMBuffer?
+
+    init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+
+    func take() -> AVAudioPCMBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = buffer
+        buffer = nil
+        return result
+    }
+}
+
 /// Serial sample processing keeps capture callbacks off the main/UI thread.
 final class PCMWriter {
     let queue: DispatchQueue
@@ -62,11 +79,10 @@ final class PCMWriter {
         guard let converter else { throw AppFailure(message: "This audio device's format cannot be converted to WAV.") }
         let capacity = AVAudioFrameCount(ceil(Double(input.frameLength) * target.sampleRate / input.format.sampleRate)) + 64
         guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { throw AppFailure(message: "Could not allocate an audio buffer.") }
-        var supplied = false
+        let source = ConverterInput(input)
         var error: NSError?
         let status = converter.convert(to: output, error: &error) { _, state in
-            if supplied { state.pointee = .noDataNow; return nil }
-            supplied = true
+            guard let input = source.take() else { state.pointee = .noDataNow; return nil }
             state.pointee = .haveData
             return input
         }

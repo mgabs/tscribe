@@ -3,6 +3,15 @@ import AVFoundation
 @testable import TscribeMac
 
 final class AudioTests: XCTestCase {
+    func testConverterInputIsConsumedOnlyOnce() throws {
+        let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 160))
+        let source = ConverterInput(buffer)
+        XCTAssertTrue(source.take() === buffer)
+        XCTAssertNil(source.take())
+        XCTAssertNil(source.take())
+    }
+
     func testConvertsNativeStereoToConfiguredMonoWAV() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

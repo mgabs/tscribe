@@ -106,6 +106,29 @@ final class LiveCaptionTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkerResponseKeepsNestedJSONValuesOnMainActor() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let script = directory.appendingPathComponent("nested.py")
+        try """
+        import json, sys
+        for line in sys.stdin:
+            request = json.loads(line)
+            data = {'config': {'enabled': True}, 'words': [{'text': 'Hello', 'start': 1.25}], 'optional': None}
+            print(json.dumps({'id': request['id'], 'event': 'result', 'data': data}), flush=True)
+        """.write(to: script, atomically: true, encoding: .utf8)
+        let client = WorkerClient(executable: URL(fileURLWithPath: "/usr/bin/python3"), arguments: [script.path])
+        defer { client.stop() }
+        let response = try await client.request("nested")
+        XCTAssertEqual((response["config"] as? [String: Any])?["enabled"] as? Bool, true)
+        let word = try XCTUnwrap((response["words"] as? [[String: Any]])?.first)
+        XCTAssertEqual(word["text"] as? String, "Hello")
+        XCTAssertEqual(word["start"] as? Double, 1.25)
+        XCTAssertTrue(response["optional"] is NSNull)
+    }
+
+    @MainActor
     func testStoppingPendingWorkerRequestAndRestartingIgnoresOldProcessExit() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -120,7 +143,7 @@ final class LiveCaptionTests: XCTestCase {
         """.write(to: script, atomically: true, encoding: .utf8)
         let client = WorkerClient(executable: URL(fileURLWithPath: "/usr/bin/python3"), arguments: [script.path])
         defer { client.stop() }
-        let waiting = Task { try await client.request("wait") }
+        let waiting = Task { _ = try await client.request("wait") }
         try await Task.sleep(nanoseconds: 100_000_000)
         client.stop()
         do { _ = try await waiting.value; XCTFail("Pending work must be cancelled") }

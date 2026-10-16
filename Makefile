@@ -3,17 +3,20 @@
 UV ?= uv
 UV := $(shell command -v "$(UV)")
 SWIFT ?= swift
+SWIFT_CHECK_FLAGS := -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
 VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
 ARCH := $(shell uname -m)
 APP := dist/tscribe.app
 ARCHIVE := dist/tscribe-$(VERSION)-macos-$(ARCH).zip
 
-.PHONY: help setup lint test test-swift test-menu-bar check cli app package checksums dist install run clean-dist clean
+.PHONY: help setup lint test test-clock test-swift test-regressions test-menu-bar check cli app package checksums dist install run clean-dist clean
 
 help:
 	@printf '%s\n' \
 	  'make setup       Install development and app build dependencies' \
 	  'make check       Run lint, Python, Swift, and desktop menu bar tests' \
+	  'make test-clock  Run deterministic repeated/advancing clock checks' \
+	  'make test-regressions  Run clock and strict Swift regression checks' \
 	  'make test-menu-bar  Verify the real icon, menu, and hide/restore behavior' \
 	  'make cli         Build the Python wheel and source distribution' \
 	  'make app         Build the self-contained macOS app' \
@@ -33,14 +36,19 @@ lint:
 test:
 	$(UV) run --locked --group dev pytest
 
+test-clock:
+	$(UV) run --locked --group dev pytest tests/test_pipewire_recorder.py -k elapsed_seconds
+
+test-regressions: test-clock test-swift
+
 test-swift:
 	TSCRIBE_PYTHON_EXECUTABLE="$(CURDIR)/.venv/bin/python" \
 	TSCRIBE_CONFIG_FILE="$(CURDIR)/build/test-state/config.toml" \
 	TSCRIBE_DATA_DIR="$(CURDIR)/build/test-state/data" \
 	TSCRIBE_LOG_DIR="$(CURDIR)/build/test-state/logs" \
-	$(UV) run --locked --group dev $(SWIFT) test --disable-sandbox --package-path macos --scratch-path build/swift
+	$(UV) run --locked --group dev $(SWIFT) test --disable-sandbox --package-path macos --scratch-path build/swift $(SWIFT_CHECK_FLAGS)
 
-check: lint test test-swift
+check: lint test test-regressions
 	$(MAKE) test-menu-bar
 
 test-menu-bar:

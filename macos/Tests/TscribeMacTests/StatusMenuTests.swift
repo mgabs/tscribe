@@ -22,6 +22,24 @@ final class StatusMenuTests: XCTestCase {
     }
 
     @MainActor
+    func testMenuTimerUpdatesDuringRecordingAndLeavesIdleDateAlone() async throws {
+        _ = NSApplication.shared
+        let model = AppModel()
+        let initial = Date.distantPast
+        model.menuDate = initial
+        model.phase = "recording"
+        for _ in 0..<200 {
+            if model.menuDate != initial { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertGreaterThan(model.menuDate, initial)
+        model.phase = "idle"
+        model.menuDate = initial
+        try await Task.sleep(nanoseconds: 1_100_000_000)
+        XCTAssertEqual(model.menuDate, initial)
+    }
+
+    @MainActor
     func testMenuIsPopulatedBeforeFirstClickEvenWhileWorkerLoads() throws {
         let (_, controller, _) = fixture()
         XCTAssertNotNil(controller.menu.item(withTitle: "Open tscribe"))

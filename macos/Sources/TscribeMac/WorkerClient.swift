@@ -15,7 +15,7 @@ final class WorkerClient {
     }
     private var process: Process?
     private var input: FileHandle?
-    private var pending: [String: (Result<[String: Any], Error>) -> Void] = [:]
+    private var pending: [String: (Result<Data, Error>) -> Void] = [:]
     private var partial = Data()
     var onEvent: ((String, [String: Any]) -> Void)?
 
@@ -79,7 +79,9 @@ final class WorkerClient {
 
     func request(_ command: String, values: [String: Any] = [:]) async throws -> [String: Any] {
         try start()
-        return try await withCheckedThrowingContinuation { continuation in
+        // Transfer the wire bytes through the continuation; decode non-Sendable
+        // Foundation dictionaries only on this actor after the request resumes.
+        let response: Data = try await withCheckedThrowingContinuation { continuation in
             let id = UUID().uuidString
             var message = values
             message["id"] = id
@@ -94,6 +96,8 @@ final class WorkerClient {
                 continuation.resume(throwing: error)
             }
         }
+        let message = try JSONSerialization.jsonObject(with: response) as? [String: Any]
+        return message?["data"] as? [String: Any] ?? [:]
     }
 
     private func receive(_ data: Data) {
@@ -105,7 +109,7 @@ final class WorkerClient {
                   let event = message["event"] as? String else { continue }
             let data = message["data"] as? [String: Any] ?? [:]
             if let id = message["id"] as? String, event == "result" {
-                pending.removeValue(forKey: id)?(.success(data))
+                pending.removeValue(forKey: id)?(.success(Data(line)))
             } else if let id = message["id"] as? String, event == "error" {
                 pending.removeValue(forKey: id)?(.failure(AppFailure(message: message["error"] as? String ?? "Worker failed")))
             } else { onEvent?(event, data) }

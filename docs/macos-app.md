@@ -232,3 +232,17 @@ ditto -c -k --sequesterRsrc --keepParent dist/tscribe.app dist/tscribe-macos-not
 
 Use a keychain profile already configured for your Apple developer account.
 A local build or signature verification does not confirm notarization.
+
+
+## Regression checks
+
+`make test-clock` verifies repeated monotonic-clock readings and known elapsed
+intervals without sleeping or relying on operating-system clock resolution.
+`make test-regressions` adds the Swift runtime suite, including menu timer updates,
+single-use converter input, nested worker responses, and worker cancellation.
+`make test-swift` enables complete concurrency checking and treats compiler warnings
+as errors. These checks also run through `make check`.
+
+CI runs the clock regression on Windows and Linux before the full Python suite.
+Native CI pins Xcode 15.4 on macOS 14 for compiler compatibility, alongside the
+Intel runner's current toolchain. The release workflow reuses the same CI gates.

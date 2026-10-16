@@ -222,7 +222,8 @@ def test_is_recording(recorder, config, tmp_path, mock_popen):
     assert recorder.is_recording() is False
 
 
-def test_elapsed_seconds(recorder, config, tmp_path, mock_popen):
+@pytest.mark.parametrize("elapsed", [0.0, 0.001, 3.25, 3600.0])
+def test_elapsed_seconds(recorder, config, tmp_path, mock_popen, elapsed):
     assert recorder.elapsed_seconds == 0.0
 
     wav_path = tmp_path / "test.wav"
@@ -235,8 +236,8 @@ def test_elapsed_seconds(recorder, config, tmp_path, mock_popen):
         try:
             # Immediate reads may share one clock tick, especially on Windows.
             assert recorder.elapsed_seconds == 0.0
-            clock.return_value = 103.25
-            assert recorder.elapsed_seconds == 3.25
+            clock.return_value = 100.0 + elapsed
+            assert recorder.elapsed_seconds == pytest.approx(elapsed)
         finally:
             recorder.stop()
 
