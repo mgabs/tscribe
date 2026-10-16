@@ -1,6 +1,7 @@
 """Build a Swift application with a bundled headless Python transcription worker."""
 from __future__ import annotations
 
+import argparse
 import os
 import plistlib
 import shutil
@@ -18,7 +19,7 @@ def run(*arguments):
     subprocess.run([str(arg) for arg in arguments], cwd=ROOT, check=True)
 
 
-def main():
+def main(destination: Path | None = None):
     if sys.platform != 'darwin':
         raise SystemExit('Build the native app on macOS.')
     worker_dist = ROOT / 'build/worker-dist'
@@ -27,7 +28,7 @@ def main():
         ROOT / 'packaging/macos/worker.spec')
     run('swift', 'build', '--disable-sandbox', '--package-path', ROOT / 'macos', '--scratch-path', ROOT / 'build/swift', '-c', 'release')
     from tscribe.desktop import RESOURCE_DIR, bundle_info
-    destination = ROOT / 'dist/tscribe.app'
+    destination = destination or ROOT / 'dist/tscribe.app'
     # Preserve the last complete app until its replacement is signed and verified.
     with tempfile.TemporaryDirectory(prefix='tscribe-stage-', dir=ROOT / 'build') as staging:
         staged = Path(staging) / 'tscribe.app'
@@ -61,5 +62,8 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, help='Build at another path, preserving the current dist app.')
+    arguments = parser.parse_args()
     with build_lock():
-        main()
+        main(arguments.output.resolve() if arguments.output else None)

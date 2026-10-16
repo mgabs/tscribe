@@ -55,11 +55,22 @@ class AppDefaults:
 
 
 @dataclass
+class CaptionDefaults:
+    enabled: bool = False
+    model: str = "base"
+    audio_source: str = "both"
+    output_mode: str = "headphones"
+    font_size: int = 24
+    always_on_top: bool = True
+
+
+@dataclass
 class TscribeConfig:
     recording: RecordingDefaults = field(default_factory=RecordingDefaults)
     transcription: TranscriptionDefaults = field(default_factory=TranscriptionDefaults)
     storage: StorageDefaults = field(default_factory=StorageDefaults)
     app: AppDefaults = field(default_factory=AppDefaults)
+    captions: CaptionDefaults = field(default_factory=CaptionDefaults)
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> TscribeConfig:
@@ -152,7 +163,7 @@ def _coerce_value(value: Any, current: Any, key: str) -> Any:
 
 def _validate_value(key: str, value: Any) -> None:
     """Validate a config value."""
-    if key == "transcription.model" and value not in VALID_MODELS:
+    if key in ("transcription.model", "captions.model") and value not in VALID_MODELS:
         raise ValueError(f"Invalid model: {value!r}. Choose from: {', '.join(VALID_MODELS)}")
     if key == "transcription.output_formats":
         if not value:
@@ -166,3 +177,10 @@ def _validate_value(key: str, value: Any) -> None:
         raise ValueError(f"channels must be positive, got {value}")
     if key == "app.recent_limit" and value <= 0:
         raise ValueError(f"recent_limit must be positive, got {value}")
+
+    if key == "captions.audio_source" and value not in ("both", "microphone", "system"):
+        raise ValueError("captions.audio_source must be both, microphone, or system")
+    if key == "captions.output_mode" and value not in ("headphones", "speakers"):
+        raise ValueError("captions.output_mode must be headphones or speakers")
+    if key == "captions.font_size" and not 12 <= value <= 72:
+        raise ValueError("captions.font_size must be between 12 and 72")

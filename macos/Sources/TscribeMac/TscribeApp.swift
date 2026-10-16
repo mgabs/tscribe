@@ -12,16 +12,30 @@ struct TscribeNativeApp: App {
                 .task { if model.phase == "loading" { await model.bootstrap() } }
         }
         .defaultSize(width: 900, height: 620)
-        .commands {
-            CommandGroup(replacing: .windowSize) {
-                Button("Minimize to Menu Bar") { delegate.hideToMenuBar() }.keyboardShortcut("m")
-                Button("Zoom") { NSApp.keyWindow?.performZoom(nil) }
-            }
-            CommandGroup(replacing: .appTermination) {
-                Button("Quit tscribe") { model.quit() }.keyboardShortcut("q")
-            }
-        }
+        .commands { TscribeCommands(model: model, delegate: delegate) }
 
+        Window("Live captions", id: "captions") {
+            CaptionsView(model: model, captions: model.liveCaptions)
+        }.defaultSize(width: 650, height: 260)
+    }
+}
+
+struct TscribeCommands: Commands {
+    @ObservedObject var model: AppModel
+    let delegate: AppDelegate
+
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { delegate.showSettings() }.keyboardShortcut(",")
+                .disabled(model.busy)
+        }
+        CommandGroup(replacing: .windowSize) {
+            Button("Minimize to Menu Bar") { delegate.hideToMenuBar() }.keyboardShortcut("m")
+            Button("Zoom") { NSApp.keyWindow?.performZoom(nil) }
+        }
+        CommandGroup(replacing: .appTermination) {
+            Button("Quit tscribe") { model.quit() }.keyboardShortcut("q")
+        }
     }
 }
 
@@ -33,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindows: [NSWindow] = []
     private var hidingWindow = false
     var openMainWindow: (() -> Void)?
+    var openSettings: (() -> Void)?
     private var exitingDuplicate = false
     private var smokeTimer: Timer?
     private let launched = Date()
@@ -92,6 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.setActivationPolicy(.accessory)
         hidingWindow = false
+    }
+    func showSettings() {
+        guard !model.busy else { return }
+        showMainWindow()
+        openSettings?()
     }
     @objc func showMainWindow() {
         NSApp.setActivationPolicy(.regular)
@@ -212,7 +232,12 @@ struct MainView: View {
                         Button("Dismiss") { model.error = nil }
                     }.padding().frame(maxWidth: .infinity, alignment: .leading).background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                 }
+                if model.captionOutputMode == "speakers", model.captionAudioSource == "both" {
+                    Text("Speaker mode is experimental: microphone echo may repeat remote voices. Headphones give cleaner captions.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
                 HStack {
+                    Button { Task { await model.startMeeting() } } label: { Label("Record Meeting", systemImage: "person.2.wave.2") }.disabled(model.busy)
                     Button { Task { await model.startRecording(system: false) } } label: { Label("Record Microphone", systemImage: "mic.fill") }.disabled(model.busy)
                     Button { Task { await model.startRecording(system: true) } } label: { Label("Record System Audio", systemImage: "speaker.wave.2.fill") }.disabled(model.busy)
                     if model.phase == "recording" {
@@ -223,6 +248,14 @@ struct MainView: View {
                     ProgressView(value: model.progress)
                     Text("Audio stays on this Mac. Model download may be needed on first use.").font(.caption).foregroundStyle(.secondary)
                 } else if model.busy && model.phase != "recording" { ProgressView().controlSize(.small) }
+                if model.phase == "recording", model.liveEnabled {
+                    HStack {
+                        Text("Live captions").font(.headline)
+                        Spacer()
+                        Button("Show Captions Window") { openWindow(id: "captions") }
+                    }
+                    CaptionText(captions: model.liveCaptions, fontSize: model.captionFontSize).frame(height: 150)
+                }
                 Divider()
                 HStack {
                     Text("Transcript").font(.headline)
@@ -239,7 +272,13 @@ struct MainView: View {
             }.padding(24).frame(minWidth: 560, minHeight: 500)
         }
         .background(WindowAccessor { delegate.attachWindow($0) })
-        .onAppear { delegate.openMainWindow = { openWindow(id: "main") } }
+        .onAppear {
+            delegate.openMainWindow = { openWindow(id: "main") }
+            delegate.openSettings = { settings = true }
+        }
+        .onChange(of: model.phase) { _, phase in
+            if phase == "recording", model.liveEnabled { openWindow(id: "captions") }
+        }
         .onChange(of: model.selected) { _, _ in Task { await model.loadTranscript() } }
         .sheet(isPresented: $settings) { SettingsView(model: model) }
 
@@ -261,6 +300,26 @@ struct SettingsView: View {
                 Toggle("Experimental speaker grouping", isOn: $model.diarize)
                 Toggle("Completion notifications", isOn: $model.notifications)
                 Stepper("Recent recordings: \(model.recentLimit)", value: $model.recentLimit, in: 1...100)
+                Section("Meeting captions — experimental") {
+                    Toggle("Live captions while recording", isOn: $model.liveEnabled)
+                    Picker("Caption model", selection: $model.captionModel) {
+                        ForEach(["tiny", "base", "small", "medium", "large"], id: \.self) { Text($0).tag($0) }
+                    }
+                    Text("Local draft captions use a separate model. First use may download it. Final transcription uses the settings above.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Picker("Audio source", selection: $model.captionAudioSource) {
+                        Text("Microphone + system audio").tag("both")
+                        Text("Microphone").tag("microphone")
+                        Text("System audio").tag("system")
+                    }
+                    Picker("Listening with", selection: $model.captionOutputMode) {
+                        Text("Headphones").tag("headphones")
+                        Text("Speakers").tag("speakers")
+                    }
+                    Stepper("Caption size: \(model.captionFontSize) pt", value: $model.captionFontSize, in: 12...72)
+                    Toggle("Keep captions above other windows", isOn: $model.captionsAlwaysOnTop)
+                    Text("Uses the transcription language above. Speaker mode has no echo cancellation yet; remote voices may repeat when using both sources.").font(.caption).foregroundStyle(.secondary)
+                }
                 Text("Shared with the Python CLI. Advanced audio and output settings are in config.toml.").font(.caption).foregroundStyle(.secondary)
             }.formStyle(.grouped)
             HStack {
@@ -269,6 +328,6 @@ struct SettingsView: View {
                 Button("Cancel") { dismiss(); Task { await model.bootstrap() } }
                 Button("Save") { Task { await model.saveSettings(); if model.error == nil { dismiss() } } }.keyboardShortcut(.defaultAction)
             }
-        }.padding(24).frame(width: 480)
+        }.padding(24).frame(width: 560, height: 740)
     }
 }

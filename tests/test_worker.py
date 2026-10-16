@@ -100,3 +100,21 @@ def test_native_recording_transcribes_with_shared_settings_and_progress():
     assert result['sessions'][0]['duration'] == 0.1
     assert [event['event'] for event in events] == ['phase', 'progress']
     assert call(worker, 'read-transcript', stem=prepared['stem'])['text'] == 'Bonjour'
+
+
+@pytest.mark.parametrize('mode', ['headphones', 'speakers'])
+@pytest.mark.parametrize('source', ['both', 'microphone', 'system'])
+def test_caption_preferences_persist_through_worker_and_cli_config(mode, source):
+    from tscribe.config import TscribeConfig
+
+    worker = Worker(lambda _: None)
+    changes = {
+        'captions.output_mode': mode, 'captions.audio_source': source,
+        'captions.font_size': 32, 'captions.always_on_top': False,
+    }
+    snapshot = call(worker, 'save-config', changes=changes)
+    disk = TscribeConfig.load(Path(snapshot['config_path']))
+    reloaded = call(Worker(lambda _: None), 'bootstrap')['config']['captions']
+    for key, value in changes.items():
+        assert disk.get(key) == value
+        assert reloaded[key.split('.')[1]] == value

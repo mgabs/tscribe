@@ -359,6 +359,27 @@ Available keys and defaults:
 | `app.show_elapsed_time` | `true` | Show elapsed recording time in the menu bar |
 | `storage.data_dir` | `""` | Override data directory (empty = `~/.tscribe`) |
 
+Experimental live meeting captions are available in the native app. Open
+**Settings…** from the menu bar or press **⌘,**, enable **Live captions while
+recording**, then choose **Record Meeting**. Microphone and system-audio recording
+buttons also support live captions when enabled.
+
+| Key | Default | Accepted values |
+|-----|---------|-----------------|
+| `captions.enabled` | `false` | Enable live captions in the native app |
+| `captions.model` | `"base"` | Same model choices as `transcription.model` |
+| `captions.audio_source` | `"both"` | `both`, `microphone`, `system`; used by Record Meeting |
+| `captions.output_mode` | `"headphones"` | `headphones`, `speakers` |
+| `captions.font_size` | `24` | 12–72 points |
+| `captions.always_on_top` | `true` | `true`, `false` |
+
+The floating window shows stable text and a provisional latest phrase. Caption
+language uses `transcription.language`. Drafts are saved separately; final
+transcription still follows `recording.auto_transcribe` and the normal model
+settings. Speaker mode remains experimental: echo cancellation is not implemented,
+so headphones give cleaner results when capturing both sources. See the
+[Mac app guide](docs/macos-app.md#live-meeting-captions) for details and limitations.
+
 ## Whisper Models
 
 | Model | Size | Speed (CPU) | Quality |

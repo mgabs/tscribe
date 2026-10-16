@@ -7,6 +7,12 @@ struct AppFailure: LocalizedError {
 
 @MainActor
 final class WorkerClient {
+    private let executableOverride: URL?
+    private let argumentsOverride: [String]
+    init(executable: URL? = nil, arguments: [String] = []) {
+        executableOverride = executable
+        argumentsOverride = arguments
+    }
     private var process: Process?
     private var input: FileHandle?
     private var pending: [String: (Result<[String: Any], Error>) -> Void] = [:]
@@ -17,7 +23,10 @@ final class WorkerClient {
         if process?.isRunning == true { return }
         let task = Process()
         let bundled = Bundle.main.resourceURL?.appendingPathComponent("Worker/tscribe-worker")
-        if let bundled, FileManager.default.isExecutableFile(atPath: bundled.path) {
+        if let executableOverride {
+            task.executableURL = executableOverride
+            task.arguments = argumentsOverride
+        } else if let bundled, FileManager.default.isExecutableFile(atPath: bundled.path) {
             task.executableURL = bundled
         } else if let python = ProcessInfo.processInfo.environment["TSCRIBE_PYTHON_EXECUTABLE"] {
             task.executableURL = URL(fileURLWithPath: python)
@@ -29,10 +38,13 @@ final class WorkerClient {
         task.standardInput = incoming
         task.standardOutput = outgoing
         task.standardError = errors
-        outgoing.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        outgoing.fileHandleForReading.readabilityHandler = { [weak self, weak task] handle in
             let data = handle.availableData
             guard !data.isEmpty else { handle.readabilityHandler = nil; return }
-            DispatchQueue.main.async { self?.receive(data) }
+            DispatchQueue.main.async {
+                guard let task, self?.process === task else { return }
+                self?.receive(data)
+            }
         }
         let logDirectory = ProcessInfo.processInfo.environment["TSCRIBE_LOG_DIR"].map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/tscribe")
@@ -49,8 +61,10 @@ final class WorkerClient {
         }
         task.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.process === process else { return }
                 self.input = nil
+                self.process = nil
+                self.partial.removeAll()
                 let error = AppFailure(message: "The transcription worker stopped (status \(process.terminationStatus)). Audio files remain saved. Reopen tscribe to retry.")
                 let callbacks = Array(self.pending.values)
                 self.pending.removeAll()
@@ -99,8 +113,14 @@ final class WorkerClient {
     }
 
     func stop() {
-        try? input?.close()
-        process?.terminate()
+        let current = process
         process = nil
+        try? input?.close()
+        input = nil
+        partial.removeAll()
+        let callbacks = Array(pending.values)
+        pending.removeAll()
+        for callback in callbacks { callback(.failure(AppFailure(message: "Transcription request cancelled."))) }
+        if current?.isRunning == true { current?.terminate() }
     }
 }

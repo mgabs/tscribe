@@ -10,6 +10,8 @@ final class StatusMenuTests: XCTestCase {
         let calls = Calls()
         let controller = StatusMenuController(model: model, actions: StatusMenuActions(
             open: { calls.open += 1 },
+            settings: { calls.settings += 1 },
+            recordMeeting: { calls.meeting += 1 },
             recordMicrophone: { calls.microphone += 1 },
             recordSystemAudio: { calls.systemAudio += 1 },
             stop: { calls.stop += 1 },
@@ -54,6 +56,8 @@ final class StatusMenuTests: XCTestCase {
         }
         try click("Open tscribe")
         try click("Quit tscribe")
+        try click("Settings…")
+        XCTAssertEqual(calls.settings, 0)
         try click("Record Microphone")
         try click("Stop Recording")
         XCTAssertEqual(calls.open, 1)
@@ -63,6 +67,10 @@ final class StatusMenuTests: XCTestCase {
         model.phase = "idle"
         model.recordingsPath = "/test/recordings"
         controller.menuNeedsUpdate(controller.menu)
+        try click("Settings…")
+        XCTAssertEqual(calls.settings, 1)
+        try click("Record Meeting")
+        XCTAssertEqual(calls.meeting, 1)
         try click("Record Microphone")
         try click("Record System Audio")
         try click("Open Recordings")
@@ -81,6 +89,8 @@ final class StatusMenuTests: XCTestCase {
 @MainActor
 private final class Calls {
     var open = 0
+    var settings = 0
+    var meeting = 0
     var microphone = 0
     var systemAudio = 0
     var stop = 0

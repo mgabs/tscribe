@@ -19,3 +19,17 @@ Uncommitted
   - Performance on supported Apple Silicon Macs: model loading, first-run downloads, transcription speed, peak memory, and energy use.
   - Feature parity: language detection/selection, model choices, timestamps, TXT/JSON/SRT/VTT export, progress reporting, speaker grouping/names, configuration, CLI integration, and offline behavior after model download.
 - [ ] Record benchmark results and migration tradeoffs before choosing a native transcription engine.
+
+
+## Live meeting captions
+
+- [x] Save caption preferences in shared config and expose app/menu settings.
+- [x] Capture microphone and system audio together, retaining separate tracks.
+- [ ] Validate echo cancellation with speakers, overlapping speech, and headphones.
+- [ ] Handle output-device changes during a meeting.
+- [x] Stream stable phrases with a provisional last phrase; keep capture independent of transcription.
+- [x] Add a floating captions window using saved size and always-on-top preferences.
+- [x] Save the caption draft and produce a final transcript after recording stops.
+- [ ] Benchmark caption delay, quality, CPU, memory, and power on representative meetings.
+- [ ] Add CLI live recording/caption streaming.
+- [ ] Validate combined capture on real calls and improve stop-time draft coverage.

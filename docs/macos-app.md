@@ -72,6 +72,61 @@ Settings form covers model, language, automatic transcription, speaker grouping,
 notifications and recent recordings. **Open config.toml** exposes the remaining
 settings. Reopen the app after editing the file externally.
 
+Open **Settings…** from the microphone menu or press **⌘,**. Caption settings
+are also shared with the CLI through `[captions]` in `config.toml`.
+
+## Live meeting captions
+
+Enable **Live captions while recording** in Settings, select a caption model,
+audio source, and Headphones/Speakers, then choose **Record Meeting** from the
+window or menu bar. **Record Microphone** and **Record System Audio** also provide
+captions when enabled. A separate floating captions window opens during capture;
+use **Show Captions Window** to reopen it. Text size and always-on-top behavior
+follow your saved preferences.
+
+The caption model defaults to `base`, separate from the normal final-transcript
+model. First use downloads that model; later use can run offline. Language uses
+`transcription.language`. Example configuration:
+
+```bash
+tscribe config captions.enabled true
+tscribe config captions.model base
+tscribe config captions.output_mode headphones
+tscribe config captions.audio_source both
+tscribe config captions.font_size 32
+tscribe config captions.always_on_top true
+```
+
+Each caption pass uses a closed WAV snapshot of at most the latest 30 seconds.
+A separate worker processes one window at a time on an approximately three-second
+cadence; it never queues an unbounded backlog. Actual delay depends on the model
+and hardware. Words shared by consecutive decodes become stable; the latest
+phrase stays provisional. VAD filters silence. If processing loses coverage, the
+window reports missed captions while full audio capture continues independently.
+Caption failures do not stop recording.
+
+**Stop** preserves the latest draft as `STEM.captions.txt` and
+`STEM.captions.json`, including provisional words and gap information. The draft
+can miss the last few seconds or audio lost while inference was behind. With
+`recording.auto_transcribe = true`, normal full-recording transcription follows
+and replaces the preview with the final transcript. With it disabled, the draft
+remains available in the app; select **Transcribe** later for a final version.
+Live drafts do not perform speaker diarization. Final transcription uses the
+existing `transcription.diarize` setting.
+
+Combined meeting capture preserves separate original microphone/system WAVs under
+`recordings/.tracks/STEM/` and produces a time-aligned mixed `STEM.wav` after
+stopping. Caption snapshots use `recordings/.live/STEM/` and are removed when the
+caption session ends. Normal session deletion/cleanup includes the drafts and
+retained tracks. A crash can leave temporary snapshots in `.live`.
+
+**Speaker mode is experimental.** This version has no acoustic echo cancellation;
+remote voices leaking into the microphone may repeat or reduce accuracy. The
+Headphones/Speakers choice records your setup and shows guidance; it does not
+apply an echo filter. Real-call quality, echo handling, output-device changes,
+and sustained CPU/power use still need validation. Live capture is currently a
+native-app feature; the Python CLI retains recording and final transcription.
+
 Completion notifications request permission when first needed. Worker diagnostics
 are appended to `~/Library/Logs/tscribe/worker.log`. Errors also appear in the main
 window, including missing permissions, model download failures and worker exits.
@@ -107,6 +162,24 @@ regular app can keep recording. It fails if a menu bar manager hides the test
 icon; expand the hidden-icons section before running it. Visibility checks use
 the actual onscreen position, including the camera housing, rather than only
 AppKit’s visibility flag.
+
+For an opt-in real-speech regression, use a speech file and an already cached
+model (the test disables downloads):
+
+```bash
+TSCRIBE_LIVE_TEST_AUDIO=/path/to/speech.wav TSCRIBE_LIVE_TEST_MODEL=small \
+  uv run --locked --group dev pytest tests/test_live.py -m slow
+
+# Build a separate preview while preserving dist/tscribe.app
+uv run --locked --group mac-app python packaging/macos/build_native.py \
+  --output build/live-preview/tscribe.app
+uv run --locked python packaging/macos/test_worker.py \
+  build/live-preview/tscribe.app/Contents/Resources/Worker/tscribe-worker
+```
+
+The bundled-worker check also verifies that multiprocessing helpers cannot open
+a second protocol server and steal caption requests. Release builds run it before
+uploading packages.
 
 The launch check never records audio or grants capture permission. Audio tests
 exercise WAV conversion using synthetic samples, not microphone input. A real

@@ -12,6 +12,8 @@ struct StatusItemPlacement {
 @MainActor
 struct StatusMenuActions {
     let open: () -> Void
+    let settings: () -> Void
+    let recordMeeting: () -> Void
     let recordMicrophone: () -> Void
     let recordSystemAudio: () -> Void
     let stop: () -> Void
@@ -26,6 +28,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let model: AppModel
     private let actions: StatusMenuActions
     private var observation: AnyCancellable?
+    private var settingsItem: NSMenuItem!
+    private var meetingItem: NSMenuItem!
     private var microphoneItem: NSMenuItem!
     private var systemAudioItem: NSMenuItem!
     private var stopItem: NSMenuItem!
@@ -39,7 +43,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.delegate = self
         add("Open tscribe", #selector(openWindow))
+        settingsItem = add("Settings…", #selector(openSettings))
         menu.addItem(.separator())
+        meetingItem = add("Record Meeting", #selector(recordMeeting))
         microphoneItem = add("Record Microphone", #selector(recordMicrophone))
         systemAudioItem = add("Record System Audio", #selector(recordSystemAudio))
         stopItem = add("Stop Recording", #selector(stopRecording))
@@ -59,6 +65,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     private func refresh() {
         // Keep the same menu items while AppKit is tracking the open menu.
+        settingsItem.isEnabled = !model.busy
+        meetingItem.isEnabled = !model.busy
         microphoneItem.isEnabled = !model.busy
         systemAudioItem.isEnabled = !model.busy
         stopItem.isEnabled = model.phase == "recording"
@@ -74,7 +82,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(entry)
         return entry
     }
+    @objc private func openSettings() { if !model.busy { actions.settings() } }
     @objc private func openWindow() { actions.open() }
+    @objc private func recordMeeting() { if !model.busy { actions.recordMeeting() } }
     @objc private func recordMicrophone() { if !model.busy { actions.recordMicrophone() } }
     @objc private func recordSystemAudio() { if !model.busy { actions.recordSystemAudio() } }
     @objc private func stopRecording() { if model.phase == "recording" { actions.stop() } }
@@ -134,6 +144,8 @@ final class StatusBarController: NSObject {
         self.model = model
         menuController = StatusMenuController(model: model, actions: StatusMenuActions(
             open: { [weak delegate] in delegate?.showMainWindow() },
+            settings: { [weak delegate] in delegate?.showSettings() },
+            recordMeeting: { Task { await model.startMeeting() } },
             recordMicrophone: { Task { await model.startRecording(system: false) } },
             recordSystemAudio: { Task { await model.startRecording(system: true) } },
             stop: { Task { await model.stopRecording() } },

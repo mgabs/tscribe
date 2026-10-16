@@ -33,6 +33,13 @@ final class AppModel: ObservableObject {
     @Published var notifications = true
     @Published var recentLimit = 5
     @Published var showElapsed = true
+    @Published var liveEnabled = false
+    @Published var captionModel = "base"
+    let liveCaptions = LiveCaptions()
+    @Published var captionAudioSource = "both"
+    @Published var captionOutputMode = "headphones"
+    @Published var captionFontSize = 24
+    @Published var captionsAlwaysOnTop = true
     @Published var configPath = ""
     @Published var recordingsPath = ""
     @Published var started: Date?
@@ -40,7 +47,7 @@ final class AppModel: ObservableObject {
     let worker = WorkerClient()
     private let capture = NativeAudioCapture()
     private var activeStem: String?
-    private var systemAudio = false
+    private var recordingSource = "microphone"
     private var quitting = false
     private var menuTimer: Timer?
     private let diarizeOverride: Bool? = CommandLine.arguments.contains("--diarize") ? true : (CommandLine.arguments.contains("--no-diarize") ? false : nil)
@@ -87,23 +94,36 @@ final class AppModel: ObservableObject {
         notifications = config["app"]?["notifications"] as? Bool ?? true
         recentLimit = config["app"]?["recent_limit"] as? Int ?? 5
         showElapsed = config["app"]?["show_elapsed_time"] as? Bool ?? true
+        liveEnabled = config["captions"]?["enabled"] as? Bool ?? false
+        captionModel = config["captions"]?["model"] as? String ?? "base"
+        captionAudioSource = config["captions"]?["audio_source"] as? String ?? "both"
+        captionOutputMode = config["captions"]?["output_mode"] as? String ?? "headphones"
+        captionFontSize = config["captions"]?["font_size"] as? Int ?? 24
+        captionsAlwaysOnTop = config["captions"]?["always_on_top"] as? Bool ?? true
     }
 
     func startRecording(system: Bool) async {
+        await startRecording(source: system ? "system" : "microphone")
+    }
+
+    func startMeeting() async { await startRecording(source: captionAudioSource) }
+
+    func startRecording(source: String) async {
         guard !busy else { return }
         phase = "preparing"; error = nil; progress = 0
-        message = system ? "Preparing system audio. macOS may request capture permission…" : "Preparing microphone…"
+        message = "Preparing audio. macOS may request microphone or system-audio capture permission…"
         do {
             let prepared = try await worker.request("prepare-recording")
             guard let stem = prepared["stem"] as? String, let path = prepared["wav_path"] as? String,
                   let config = prepared["config"] as? [String: [String: Any]] else { throw AppFailure(message: "Invalid recording details from the worker.") }
             let recording = config["recording"] ?? [:]
-            try await capture.start(url: URL(fileURLWithPath: path), systemAudio: system,
+            try await capture.start(url: URL(fileURLWithPath: path), source: source,
                                     sampleRate: recording["sample_rate"] as? Double ?? 16000,
                                     channels: recording["channels"] as? Int ?? 1,
-                                    deviceName: system ? "" : (recording["default_device"] as? String ?? ""))
-            activeStem = stem; systemAudio = system; started = Date(); menuDate = Date()
-            phase = "recording"; message = system ? "Recording system audio" : "Recording microphone"
+                                    deviceName: recording["default_device"] as? String ?? "", live: liveEnabled)
+            activeStem = stem; recordingSource = source; started = Date(); menuDate = Date()
+            phase = "recording"; message = source == "both" ? "Recording microphone + system audio" : "Recording \(source)"
+            if liveEnabled { liveCaptions.start(stem: stem, directory: URL(fileURLWithPath: path).deletingLastPathComponent(), capture: capture) }
             if quitting { await stopRecording() }
         } catch { fail(error) }
     }
@@ -111,9 +131,11 @@ final class AppModel: ObservableObject {
     func stopRecording() async {
         guard phase == "recording", let stem = activeStem else { return }
         phase = "saving"; message = "Saving recording…"
+        liveCaptions.stop()
         do {
-            try await capture.stop()
-            let result = try await worker.request("finish-recording", values: ["stem": stem, "source": systemAudio ? "loopback" : "microphone", "device": systemAudio ? "ScreenCaptureKit" : "macOS microphone", "diarize": diarize])
+            let summary = try await capture.stop()
+            let source = recordingSource == "both" ? "meeting" : (recordingSource == "system" ? "loopback" : "microphone")
+            let result = try await worker.request("finish-recording", values: ["stem": stem, "source": source, "device": "macOS native audio", "diarize": diarize, "track_offsets": summary.offsets])
             complete(result, stem: stem)
         } catch { fail(error) }
     }
@@ -129,6 +151,7 @@ final class AppModel: ObservableObject {
         apply(result); selected = stem
         transcript = result["text"] as? String ?? ""
         transcriptCache[stem] = transcript
+        if result["message"] as? String == "Transcription complete" { liveCaptions.finish(text: transcript, stem: stem) }
         message = result["message"] as? String ?? "Complete"
         phase = "idle"; started = nil; activeStem = nil
         if notifications {
@@ -164,6 +187,9 @@ final class AppModel: ObservableObject {
                 "transcription.diarize": diarize, "recording.auto_transcribe": autoTranscribe,
                 "app.notifications": notifications, "app.recent_limit": recentLimit,
                 "app.show_elapsed_time": showElapsed,
+                "captions.enabled": liveEnabled, "captions.model": captionModel,
+                "captions.audio_source": captionAudioSource, "captions.output_mode": captionOutputMode,
+                "captions.font_size": captionFontSize, "captions.always_on_top": captionsAlwaysOnTop,
             ]]))
             phase = "idle"; message = "Settings saved"
         } catch { fail(error) }
@@ -191,6 +217,7 @@ final class AppModel: ObservableObject {
     }
     func openRecordings() { if !recordingsPath.isEmpty { NSWorkspace.shared.open(URL(fileURLWithPath: recordingsPath)) } }
     func quit() {
+        if !busy { liveCaptions.stop() }
         if phase == "loading" { phase = "idle"; worker.stop(); NSApp.terminate(nil); return }
         if phase == "recording" { quitting = true; Task { await stopRecording() }; return }
         if busy { quitting = true; message += " tscribe will quit when this finishes."; return }

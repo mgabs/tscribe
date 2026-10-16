@@ -4,7 +4,7 @@ import ScreenCaptureKit
 
 /// Serial sample processing keeps capture callbacks off the main/UI thread.
 final class PCMWriter {
-    let queue = DispatchQueue(label: "tscribe.audio.samples")
+    let queue: DispatchQueue
     private let url: URL
     private let target: AVAudioFormat
     private var file: AVAudioFile?
@@ -12,12 +12,24 @@ final class PCMWriter {
     private var frames: AVAudioFramePosition = 0
     private var inputDuration: Double = 0
     private var failure: Error?
+    private let live: Bool
+    private let epoch: Double
+    private var startOffset: Double?
+    private var recent: [Data] = []
+    private var recentFrames = 0
 
-    init(url: URL, sampleRate: Double, channels: Int) throws {
+    var offset: Double { startOffset ?? 0 }
+    var hasAudio: Bool { frames > 0 }
+
+
+    init(url: URL, sampleRate: Double, channels: Int, live: Bool = false, epoch: Double = 0, queue: DispatchQueue = DispatchQueue(label: "tscribe.audio.samples")) throws {
         guard sampleRate > 0, channels > 0,
               let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: AVAudioChannelCount(channels), interleaved: true) else {
             throw AppFailure(message: "Invalid audio sample rate or channel count.")
         }
+        self.queue = queue
+        self.live = live
+        self.epoch = epoch
         self.url = url
         self.target = target
     }
@@ -32,6 +44,10 @@ final class PCMWriter {
             input.frameLength = input.frameCapacity
             let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(sample, at: 0, frameCount: Int32(input.frameLength), into: input.mutableAudioBufferList)
             guard status == noErr else { throw AppFailure(message: "Could not read captured audio (\(status)).") }
+            if startOffset == nil {
+                let timestamp = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                startOffset = timestamp.isFinite ? max(0, timestamp - epoch) : 0
+            }
             try appendPCM(input)
         } catch { if failure == nil { failure = error } }
     }
@@ -59,10 +75,40 @@ final class PCMWriter {
             if file == nil { file = try AVAudioFile(forWriting: url, settings: target.settings, commonFormat: .pcmFormatInt16, interleaved: true) }
             try file?.write(from: output)
             frames += AVAudioFramePosition(output.frameLength)
+            if live, let samples = output.int16ChannelData {
+                let bytesPerFrame = Int(target.channelCount) * 2
+                let maxFrames = Int(target.sampleRate * 30)
+                let keptFrames = min(Int(output.frameLength), maxFrames)
+                let data = Data(bytes: samples.pointee.advanced(by: (Int(output.frameLength) - keptFrames) * Int(target.channelCount)), count: keptFrames * bytesPerFrame)
+                recent.append(data)
+                recentFrames += keptFrames
+                while recentFrames > maxFrames, let first = recent.first {
+                    let excess = min(recentFrames - maxFrames, first.count / bytesPerFrame)
+                    if excess * bytesPerFrame == first.count { recent.removeFirst() }
+                    else { recent[0] = first.dropFirst(excess * bytesPerFrame) }
+                    recentFrames -= excess
+                }
+            }
         }
     }
 
-    func finish() throws {
+    /// Called on the sample queue: closed snapshot WAVs are independent of capture.
+    func snapshot(to url: URL) throws -> Double? {
+        if let failure { throw failure }
+        guard live, recentFrames > 0 else { return nil }
+        let bytes = recent.reduce(into: Data()) { $0.append($1) }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: AVAudioFrameCount(recentFrames)),
+              let destination = buffer.int16ChannelData else { return nil }
+        buffer.frameLength = buffer.frameCapacity
+        bytes.withUnsafeBytes { source in
+            if let address = source.baseAddress { memcpy(destination.pointee, address, bytes.count) }
+        }
+        let snapshot = try AVAudioFile(forWriting: url, settings: target.settings, commonFormat: .pcmFormatInt16, interleaved: true)
+        try snapshot.write(from: buffer)
+        return offset + Double(frames - AVAudioFramePosition(recentFrames)) / target.sampleRate
+    }
+
+    func finish(allowEmpty: Bool = false) throws {
         try queue.sync {
             // The rate converter retains a filter tail between buffers. Drain it
             // at EOF so short recordings do not lose their final syllables.
@@ -84,68 +130,115 @@ final class PCMWriter {
                     if status == .endOfStream || output.frameLength == 0 { break }
                 }
             }
+            if frames == 0, allowEmpty, failure == nil {
+                file = try AVAudioFile(forWriting: url, settings: target.settings, commonFormat: .pcmFormatInt16, interleaved: true)
+            }
             file = nil // Close and finalize the WAV header before the worker reads it.
             if let failure { throw failure }
-            guard frames > 0 else { throw AppFailure(message: "No audio was captured. Check permissions and the selected input device.") }
+            guard frames > 0 || allowEmpty else { throw AppFailure(message: "No audio was captured. Check permissions and the selected input device.") }
         }
     }
 }
 
-final class NativeAudioCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, SCStreamOutput, SCStreamDelegate {
+struct CaptureSummary {
+    let offsets: [String: Double]
+}
+
+// Capture lifecycle is serialized by AppModel; sample callbacks, snapshots, and
+// writer disposal all use sampleQueue. Inference never runs on that queue.
+final class NativeAudioCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+    private let sampleQueue = DispatchQueue(label: "tscribe.capture.samples")
     private var microphone: AVCaptureSession?
     private var system: SCStream?
-    private var writer: PCMWriter?
+    private var microphoneWriter: PCMWriter?
+    private var systemWriter: PCMWriter?
     var onFailure: ((Error) -> Void)?
 
-    func start(url: URL, systemAudio: Bool, sampleRate: Double, channels: Int, deviceName: String) async throws {
-        let writer = try PCMWriter(url: url, sampleRate: sampleRate, channels: channels)
-        self.writer = writer
-        if systemAudio {
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            guard let display = content.displays.first else { throw AppFailure(message: "No display is available for system-audio capture.") }
-            let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
-            let settings = SCStreamConfiguration()
-            settings.width = 16
-            settings.height = 16
-            settings.minimumFrameInterval = CMTime(value: 1, timescale: 1)
-            settings.capturesAudio = true
-            settings.excludesCurrentProcessAudio = true
-            // ScreenCaptureKit accepts native system rates; PCMWriter converts to config.
-            settings.sampleRate = 48000
-            settings.channelCount = 2
-            let stream = SCStream(filter: filter, configuration: settings, delegate: self)
-            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: writer.queue)
-            do { try await stream.startCapture() }
-            catch { self.writer = nil; throw error }
-            system = stream
-        } else {
+    func start(url: URL, source: String, sampleRate: Double, channels: Int, deviceName: String, live: Bool) async throws {
+        guard ["both", "microphone", "system"].contains(source) else { throw AppFailure(message: "Unknown audio source.") }
+        let useMicrophone = source != "system", useSystem = source != "microphone"
+        if useMicrophone {
             guard await AVCaptureDevice.requestAccess(for: .audio) else {
-                self.writer = nil
                 throw AppFailure(message: "Microphone access is off. Enable tscribe in System Settings → Privacy & Security → Microphone, then try again.")
             }
-            let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
-            let device: AVCaptureDevice?
-            if deviceName.isEmpty { device = AVCaptureDevice.default(for: .audio) }
-            else { device = discovery.devices.first { $0.uniqueID == deviceName || $0.localizedName == deviceName } }
-            guard let device else { throw AppFailure(message: "Microphone '\(deviceName)' was not found. Set recording.default_device to a device name or leave it empty for the system default.") }
-            let session = AVCaptureSession()
-            let input = try AVCaptureDeviceInput(device: device)
-            let output = AVCaptureAudioDataOutput()
-            output.setSampleBufferDelegate(self, queue: writer.queue)
-            guard session.canAddInput(input), session.canAddOutput(output) else { throw AppFailure(message: "The selected microphone cannot be captured.") }
-            session.beginConfiguration()
-            session.addInput(input)
-            session.addOutput(output)
-            session.commitConfiguration()
-            await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async { session.startRunning(); continuation.resume() }
+        }
+        // Resolve permissions before starting the common recording clock.
+        let content = useSystem ? try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) : nil
+        let epoch = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+        do {
+            if useMicrophone {
+                microphoneWriter = try PCMWriter(url: url, sampleRate: sampleRate, channels: channels, live: live, epoch: epoch, queue: sampleQueue)
+                try await startMicrophone(deviceName: deviceName)
             }
-            guard session.isRunning else { throw AppFailure(message: "The microphone did not start. Check macOS permissions and reconnect the device.") }
-            microphone = session
+            if useSystem, let content {
+                let trackDirectory = url.deletingLastPathComponent().appendingPathComponent(".tracks").appendingPathComponent(url.deletingPathExtension().lastPathComponent)
+                if source == "both" { try FileManager.default.createDirectory(at: trackDirectory, withIntermediateDirectories: true) }
+                systemWriter = try PCMWriter(url: source == "both" ? trackDirectory.appendingPathComponent("system.wav") : url,
+                                             sampleRate: sampleRate, channels: channels, live: live, epoch: epoch, queue: sampleQueue)
+                try await startSystem(content: content)
+            }
+        } catch {
+            // A failure in either half must stop the other half too.
+            _ = try? await stop()
+            throw error
         }
     }
 
-    func stop() async throws {
+    private func startMicrophone(deviceName: String) async throws {
+        let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
+        let device = deviceName.isEmpty ? AVCaptureDevice.default(for: .audio) : discovery.devices.first { $0.uniqueID == deviceName || $0.localizedName == deviceName }
+        guard let device else { throw AppFailure(message: "Microphone '\(deviceName)' was not found. Set recording.default_device to a device name or leave it empty for the system default.") }
+        let session = AVCaptureSession()
+        let input = try AVCaptureDeviceInput(device: device)
+        let output = AVCaptureAudioDataOutput()
+        output.setSampleBufferDelegate(self, queue: sampleQueue)
+        guard session.canAddInput(input), session.canAddOutput(output) else { throw AppFailure(message: "The selected microphone cannot be captured.") }
+        session.beginConfiguration()
+        session.addInput(input)
+        session.addOutput(output)
+        session.commitConfiguration()
+        microphone = session
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { session.startRunning(); continuation.resume() }
+        }
+        guard session.isRunning else { throw AppFailure(message: "The microphone did not start. Check macOS permissions and reconnect the device.") }
+    }
+
+    private func startSystem(content: SCShareableContent) async throws {
+        guard let display = content.displays.first else { throw AppFailure(message: "No display is available for system-audio capture.") }
+        let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+        let settings = SCStreamConfiguration()
+        settings.width = 16
+        settings.height = 16
+        settings.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+        settings.capturesAudio = true
+        settings.excludesCurrentProcessAudio = true
+        settings.sampleRate = 48000
+        settings.channelCount = 2
+        let stream = SCStream(filter: filter, configuration: settings, delegate: self)
+        try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: sampleQueue)
+        system = stream
+        try await stream.startCapture()
+    }
+
+    func snapshot(directory: URL, stem: String, sequence: Int) async throws -> [String: Double] {
+        try await withCheckedThrowingContinuation { continuation in
+            sampleQueue.async {
+                do {
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    var offsets: [String: Double] = [:]
+                    for (source, writer) in [("microphone", self.microphoneWriter), ("system", self.systemWriter)] {
+                        if let offset = try writer?.snapshot(to: directory.appendingPathComponent("\(sequence)-\(source).wav")) {
+                            offsets[source] = offset
+                        }
+                    }
+                    continuation.resume(returning: offsets)
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    func stop() async throws -> CaptureSummary {
         var stoppingError: Error?
         if let system {
             do { try await system.stopCapture() } catch { stoppingError = error }
@@ -157,17 +250,29 @@ final class NativeAudioCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDe
             }
             self.microphone = nil
         }
-        guard let writer else { throw AppFailure(message: "No recording is active.") }
-        defer { self.writer = nil }
-        try writer.finish()
+        // Flush callbacks before accessing/releasing their writers.
+        let writers = sampleQueue.sync { [("microphone", microphoneWriter), ("system", systemWriter)] }
+        guard writers.contains(where: { $0.1 != nil }) else { throw AppFailure(message: "No recording is active.") }
+        var offsets: [String: Double] = [:]
+        let both = writers.allSatisfy { $0.1 != nil }
+        for (source, writer) in writers {
+            guard let writer else { continue }
+            do { try writer.finish(allowEmpty: both); offsets[source] = writer.offset }
+            catch { if stoppingError == nil { stoppingError = error } }
+        }
+        if !writers.contains(where: { $0.1?.hasAudio == true }), stoppingError == nil {
+            stoppingError = AppFailure(message: "No audio was captured. Check permissions and selected devices.")
+        }
+        sampleQueue.sync { microphoneWriter = nil; systemWriter = nil }
         if let stoppingError { throw stoppingError }
+        return CaptureSummary(offsets: offsets)
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        writer?.append(sampleBuffer)
+        microphoneWriter?.append(sampleBuffer)
     }
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        if type == .audio { writer?.append(sampleBuffer) }
+        if type == .audio { systemWriter?.append(sampleBuffer) }
     }
     func stream(_ stream: SCStream, didStopWithError error: Error) { onFailure?(error) }
 }

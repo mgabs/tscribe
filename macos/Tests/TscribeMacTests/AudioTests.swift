@@ -38,6 +38,31 @@ final class AudioTests: XCTestCase {
 
 final class WorkerTests: XCTestCase {
     @MainActor
+    func testCaptionSettingsSaveAndReloadThroughAppModel() async throws {
+        guard ProcessInfo.processInfo.environment["TSCRIBE_PYTHON_EXECUTABLE"] != nil else {
+            throw XCTSkip("Set TSCRIBE_PYTHON_EXECUTABLE to run the worker integration test")
+        }
+        let model = AppModel()
+        defer { model.worker.stop() }
+        await model.bootstrap()
+        XCTAssertNil(model.error)
+        model.captionAudioSource = "both"
+        model.captionOutputMode = "speakers"
+        model.captionFontSize = 36
+        model.captionsAlwaysOnTop = false
+        await model.saveSettings()
+        XCTAssertNil(model.error)
+        let reopened = AppModel()
+        defer { reopened.worker.stop() }
+        await reopened.bootstrap()
+        XCTAssertNil(reopened.error)
+        XCTAssertEqual(reopened.captionAudioSource, "both")
+        XCTAssertEqual(reopened.captionOutputMode, "speakers")
+        XCTAssertEqual(reopened.captionFontSize, 36)
+        XCTAssertFalse(reopened.captionsAlwaysOnTop)
+    }
+
+    @MainActor
     func testNativeClientTalksToRealPythonWorker() async throws {
         guard ProcessInfo.processInfo.environment["TSCRIBE_PYTHON_EXECUTABLE"] != nil else {
             throw XCTSkip("Set TSCRIBE_PYTHON_EXECUTABLE to run the worker integration test")

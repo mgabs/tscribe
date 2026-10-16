@@ -9,6 +9,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def ensure_av_compatibility():
+    """Handle PyAV versions that removed faster-whisper's metadata_errors option."""
+    import av
+
+    if getattr(av.open, '_tscribe_compatible', False):
+        return
+    original = av.open
+
+    def compatible_open(*args, **kwargs):
+        kwargs.pop('metadata_errors', None)
+        return original(*args, **kwargs)
+
+    compatible_open._tscribe_compatible = True
+    av.open = compatible_open
+
+
 @dataclass
 class TranscriptSegment:
     start: float
@@ -133,18 +149,7 @@ class Transcriber:
                     if self._compute_type not in supported:
                         self._compute_type = "int8" if "int8" in supported else "float32"
 
-            try:
-                import av
-
-                _orig_open = av.open
-
-                def _compat_open(*args, **kwargs):
-                    kwargs.pop("metadata_errors", None)
-                    return _orig_open(*args, **kwargs)
-
-                av.open = _compat_open
-            except ImportError:
-                pass
+            ensure_av_compatibility()
 
             from faster_whisper import WhisperModel
 
@@ -154,6 +159,19 @@ class Transcriber:
                 compute_type=self._compute_type,
             )
         return self._model
+
+    def transcribe_words(self, audio, language: str = "auto") -> list[dict]:
+        """Decode one bounded caption window without export or diarization."""
+        segments, _ = self._get_model().transcribe(
+            audio, language=None if language == "auto" else language,
+            beam_size=1, word_timestamps=True, vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 400},
+            condition_on_previous_text=False,
+        )
+        return [
+            {"start": word.start, "end": word.end, "text": word.word}
+            for segment in segments for word in (segment.words or [])
+        ]
 
     def transcribe(
         self,

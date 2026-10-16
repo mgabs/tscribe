@@ -23,6 +23,8 @@ class Worker:
         self.emit = emit
         self._transcriber = None
         self._model_key = None
+        self._caption_stem = None
+        self._caption_draft = None
 
     def configuration(self):
         config = TscribeConfig.load(get_config_path())
@@ -68,6 +70,8 @@ class Worker:
         if command == 'prepare-recording':
             stem = manager.generate_session_stem()
             return {'stem': stem, 'wav_path': str(self.recording_path(manager, stem)), 'config': config._to_dict()}
+        if command == 'live-caption':
+            return self.live_caption(request, config, manager)
         if command in ('finish-recording', 'transcribe'):
             stem = request.get('stem')
             path = self.recording_path(manager, stem)
@@ -76,6 +80,9 @@ class Worker:
             if command == 'finish-recording':
                 # Read the completed WAV rather than trusting caller-supplied duration.
                 import wave
+                if request.get('source') == 'meeting':
+                    from tscribe.live import mix_recording
+                    mix_recording(path, request.get('track_offsets', {}))
                 with wave.open(str(path)) as audio:
                     rate, channels = audio.getframerate(), audio.getnchannels()
                     duration = audio.getnframes() / rate
@@ -84,7 +91,7 @@ class Worker:
                 result = RecordingResult(path, duration, rate, channels, request.get('device', 'native'), request.get('source', 'microphone'))
                 manager.write_metadata(stem, manager.create_metadata(result))
                 if not config.recording.auto_transcribe:
-                    return {**self.snapshot(config, manager), 'message': 'Recording saved', 'text': ''}
+                    return {**self.snapshot(config, manager), 'message': 'Recording saved', 'text': self.caption_text(path)}
             return self.transcribe(request, config, manager, stem, path)
         if command == 'read-transcript':
             path = self.recording_path(manager, request.get('stem'))
@@ -95,8 +102,48 @@ class Worker:
                 data = json.loads(path.with_suffix('.json').read_text(encoding='utf-8'))
                 result = TranscriptResult(data.get('file', path.name), data.get('model', ''), data.get('language', ''), [TranscriptSegment(**segment) for segment in data['segments']])
                 return {'text': result.to_txt()}
-            return {'text': 'No text transcript is available. Select Transcribe to create one.'}
+            return {'text': self.caption_text(path) or 'No text transcript is available. Select Transcribe to create one.'}
         raise ValueError(f'Unknown worker command: {command!r}')
+
+    @staticmethod
+    def caption_text(path):
+        draft = path.with_suffix('.captions.txt')
+        if draft.is_file():
+            return 'Live caption draft (may be incomplete; not a final transcript)\n\n' + draft.read_text(encoding='utf-8')
+        return ''
+
+    def live_caption(self, request, config, manager):
+        from tscribe.live import CaptionDraft, read_window
+        from tscribe.transcriber import Transcriber
+
+        stem = request.get('stem')
+        path = self.recording_path(manager, stem)
+        sequence = request.get('sequence')
+        if type(sequence) is not int or sequence < 0:
+            raise ValueError('Caption sequence must be a nonnegative integer')
+        offsets = request.get('tracks')
+        if not isinstance(offsets, dict) or not offsets or set(offsets) - {'microphone', 'system'}:
+            raise ValueError('Caption tracks must be microphone and/or system')
+        tracks = []
+        for source, offset in offsets.items():
+            if type(offset) not in (int, float):
+                raise ValueError('Caption track offsets must be numbers')
+            tracks.append((path.parent / '.live' / stem / f'{sequence}-{source}.wav', offset))
+        samples, start, end = read_window(tracks)
+        key = (config.captions.model, config.transcription.gpu)
+        if key != self._model_key:
+            self._transcriber = Transcriber(model_name=key[0], device='cuda' if key[1] else 'cpu')
+            self._model_key = key
+        words = self._transcriber.transcribe_words(samples, language=config.transcription.language)
+        for word in words:
+            word['start'] += start
+            word['end'] += start
+        if self._caption_stem != stem:
+            self._caption_stem = stem
+            self._caption_draft = CaptionDraft()
+        result = self._caption_draft.update(words, start, end, sequence)
+        self._caption_draft.save(path)
+        return result
 
     def transcribe(self, request, config, manager, stem, path):
         from tscribe.transcriber import Transcriber

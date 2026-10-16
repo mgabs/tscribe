@@ -90,3 +90,31 @@ def test_independent_build_is_rejected_until_lock_is_released(tmp_path, monkeypa
     released = subprocess.run([sys.executable, '-c', script, str(tmp_path)], env=env, capture_output=True, text=True, timeout=10)
     assert released.returncode == 0
     assert released.stdout.strip() == 'acquired'
+
+
+def test_preview_build_preserves_current_dist_app(native_build, monkeypatch):
+    module, destination = native_build
+    monkeypatch.setattr(module, 'run', fake_run)
+    preview = module.ROOT / 'build/preview/tscribe.app'
+    module.main(preview)
+    assert (destination / 'previous').read_text() == 'last complete build'
+    assert (preview / 'Contents/MacOS/tscribe-native').read_text() == 'new executable'
+
+
+def test_packaged_entrypoint_initializes_multiprocessing_before_worker(monkeypatch):
+    import builtins
+    import runpy
+
+    events = []
+    original_import = builtins.__import__
+
+    def observe_import(name, *args, **kwargs):
+        if name == 'tscribe.worker':
+            events.append('worker-import')
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr('multiprocessing.freeze_support', lambda: events.append('freeze-support'))
+    monkeypatch.setattr('tscribe.worker.main', lambda: events.append('worker-main'))
+    monkeypatch.setattr(builtins, '__import__', observe_import)
+    runpy.run_path(str(BUILD_SCRIPTS / 'worker_entrypoint.py'), run_name='__main__')
+    assert events == ['freeze-support', 'worker-import', 'worker-main']

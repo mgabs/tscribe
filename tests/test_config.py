@@ -256,3 +256,27 @@ def test_invalid_section_error_identifies_section(tmp_path):
 def test_empty_formats_error_is_actionable():
     with pytest.raises(ValueError, match='^output_formats must contain at least one format$'):
         TscribeConfig().set('transcription.output_formats', [])
+
+
+@pytest.mark.parametrize(('key', 'value'), [
+    ('captions.audio_source', 'loopback'),
+    ('captions.output_mode', 'bluetooth'),
+    ('captions.font_size', 11),
+    ('captions.font_size', 73),
+    ('captions.font_size', True),
+    ('captions.always_on_top', 'maybe'),
+])
+def test_caption_preferences_reject_invalid_values(key, value):
+    with pytest.raises(ValueError):
+        TscribeConfig().set(key, value)
+
+
+def test_existing_config_gets_caption_defaults(tmp_path):
+    path = tmp_path / 'config.toml'
+    path.write_text('[transcription]\nmodel = "tiny"\n')
+    config = TscribeConfig.load(path)
+    assert config.captions.audio_source == 'both'
+    assert config.captions.output_mode == 'headphones'
+    assert config.captions.font_size == 24
+    assert config.captions.always_on_top is True
+    assert config.transcription.model == 'tiny'

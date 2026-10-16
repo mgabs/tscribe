@@ -103,20 +103,7 @@ jobs:
           codesign --verify --deep --strict dist/tscribe.app
           test "$(dist/tscribe.app/Contents/Resources/Worker/tscribe-worker --cli --version)" = "tscribe, version $VERSION"
           unzip -tq "dist/tscribe-$VERSION-macos-$ARCH.zip"
-          uv run --locked python - <<'PY'
-          import json
-          import os
-          import subprocess
-          import tempfile
-          with tempfile.TemporaryDirectory() as directory:
-              env = dict(os.environ, TSCRIBE_CONFIG_FILE=f'{directory}/config.toml', TSCRIBE_DATA_DIR=f'{directory}/data')
-              result = subprocess.run(
-                  ['dist/tscribe.app/Contents/Resources/Worker/tscribe-worker'],
-                  input=json.dumps({'id': 'release', 'command': 'bootstrap'}) + '\n',
-                  text=True, capture_output=True, check=True, env=env, timeout=30,
-              )
-              assert json.loads(result.stdout)['event'] == 'result', result.stdout
-          PY
+          uv run --locked python packaging/macos/test_worker.py dist/tscribe.app/Contents/Resources/Worker/tscribe-worker
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-macos-${{ matrix.arch }}

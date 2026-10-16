@@ -188,6 +188,22 @@ class SessionManager:
             return session.stem
         return session.stem
 
+    def _session_files(self, stem: str) -> list[Path]:
+        if not stem or Path(stem).name != stem or stem in ('.', '..'):
+            raise ValueError('Invalid recording name')
+        files = [
+            path for path in self.recordings_dir.iterdir()
+            if path.is_file() and (path.stem == stem or path.name in (
+                f'{stem}.captions.txt', f'{stem}.captions.json',
+                f'{stem}.captions.json.tmp', f'{stem}.captions.txt.tmp',
+            ))
+        ]
+        for root in ('.tracks', '.live'):
+            directory = self.recordings_dir / root / stem
+            if directory.is_dir() and not directory.is_symlink():
+                files.extend(path for path in directory.iterdir() if path.is_file())
+        return files
+
     def delete_session(self, stem: str) -> tuple[list[Path], int]:
         """Delete all files associated with a session stem.
 
@@ -195,15 +211,19 @@ class SessionManager:
         """
         deleted: list[Path] = []
         bytes_freed = 0
-        for f in self.recordings_dir.iterdir():
-            if f.stem == stem and f.is_file():
-                try:
-                    size = f.stat().st_size
-                    f.unlink()
-                    deleted.append(f)
-                    bytes_freed += size
-                except OSError:
-                    pass
+        for f in self._session_files(stem):
+            try:
+                size = f.stat().st_size
+                f.unlink()
+                deleted.append(f)
+                bytes_freed += size
+            except OSError:
+                pass
+        for root in ('.tracks', '.live'):
+            try:
+                (self.recordings_dir / root / stem).rmdir()
+            except OSError:
+                pass
         return deleted, bytes_freed
 
     def clean_sessions(
@@ -243,7 +263,7 @@ class SessionManager:
             if cutoff_date is not None and session_date > cutoff_date:
                 continue
 
-            session_files = [f for f in self.recordings_dir.iterdir() if f.stem == stem and f.is_file()]
+            session_files = self._session_files(stem)
             total_size = sum(f.stat().st_size for f in session_files if f.exists())
 
             if dry_run:

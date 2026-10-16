@@ -23,3 +23,12 @@ data_dir = "" # Empty uses ~/.tscribe; supports paths such as ~/Recordings/tscri
 notifications = true
 recent_limit = 5
 show_elapsed_time = true
+
+# Experimental native-app live captions. Language uses transcription.language.
+[captions]
+enabled = false
+model = "base" # Separate, smaller caption model; final transcript uses transcription.model.
+audio_source = "both" # both, microphone, system
+output_mode = "headphones" # headphones, speakers; echo cancellation is not implemented.
+font_size = 24 # 12–72 points
+always_on_top = true
