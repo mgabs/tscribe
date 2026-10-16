@@ -27,6 +27,8 @@ https://private-user-images.githubusercontent.com/1709257/546508788-dcd6ee47-d2b
 - **Open** transcripts in your default editor/viewer
 - **Dump** transcripts to stdout for piping
 - **Search** past transcripts by keyword
+- **Live meeting captions** in the Mac app, with microphone + system audio capture
+- **Speaker identification** using local voice embeddings and word-level attribution
 - **Cross-platform**: Linux (PipeWire), macOS, Windows
 - Output formats: plain text, JSON (timestamped), SRT, WebVTT
 
@@ -176,9 +178,17 @@ A progress bar with ETA is shown during transcription:
 
 ### Speaker Diarization
 
-Experimental speaker grouping using offline Silero VAD segmentation and
-agglomerative clustering. The current amplitude-histogram method is a heuristic,
-not a voice-embedding model, and may confuse speakers or recording conditions:
+Speaker identification uses short speech windows and neural voice embeddings from
+[sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/speaker-identification/), with
+spectral clustering to group voices.
+Word timestamps preserve speaker changes inside a transcription segment. Models
+are downloaded on first use to `~/.tscribe/models/diarization/` (or under
+`TSCRIBE_DATA_DIR`) and reused offline; audio stays on your computer. For offline
+setup, place `wespeaker_en_voxceleb_resnet34_LM.onnx` in that directory. A download
+failure reports the source URL and expected path; it does not fall back to
+volume-based grouping.
+Speaker detection can still make mistakes, especially during overlapping speech.
+Use `--speakers 3` when the recording has three speakers:
 
 ```bash
 # Auto-diarize during recording
@@ -454,12 +464,12 @@ Python checks on Apple Silicon and Intel Macs. Dependency resolution is locked
 with `uv.lock`. Tests use synthetic audio and do not need capture permissions or
 Whisper model downloads.
 
-After committing/pushing the release changes, publish version 2.2.0 by pushing
+After committing/pushing the release changes, publish version 2.3.0 by pushing
 its matching tag:
 
 ```bash
-git tag -a v2.2.0 -m "tscribe 2.2.0"
-git push origin v2.2.0
+git tag -a v2.3.0 -m "tscribe 2.3.0"
+git push origin v2.3.0
 ```
 
 The release workflow rejects mismatched versions, waits for checks, builds the
@@ -508,7 +518,7 @@ src/tscribe/
 ├── desktop.py            # Native app discovery/installation
 ├── cli.py                # Click CLI with subcommands
 ├── config.py             # TOML configuration management
-├── diarization.py        # Speaker diarization (Silero VAD + clustering)
+├── diarization.py        # Speaker diarization (voice embeddings + clustering)
 ├── paths.py              # Cross-platform path resolution
 ├── devices.py            # Audio device enumeration (sounddevice)
 ├── pipewire_devices.py   # PipeWire device enumeration (Linux)

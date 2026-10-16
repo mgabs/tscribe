@@ -20,7 +20,7 @@ open dist/tscribe.app
 
 The app opens a recording/transcript window and also adds menu bar controls.
 Closing or minimizing the window hides it to the menu bar and removes its Dock
-icon. **Hide to Menu Bar** does the same. Click the microphone icon and choose
+icon. **Hide to Menu Bar** does the same. Click the note-and-microphone icon and choose
 **Open tscribe**, or launch the app again from Finder, to restore the window and
 Dock icon. Recording and transcription continue while the window is hidden. Starting a second native instance
 activates the existing app.
@@ -72,7 +72,7 @@ Settings form covers model, language, automatic transcription, speaker grouping,
 notifications and recent recordings. **Open config.toml** exposes the remaining
 settings. Reopen the app after editing the file externally.
 
-Open **Settings…** from the microphone menu or press **⌘,**. Caption settings
+Open **Settings…** from the tscribe menu or press **⌘,**. Caption settings
 are also shared with the CLI through `[captions]` in `config.toml`.
 
 ## Live meeting captions
@@ -212,7 +212,7 @@ cleanup commands share a lock: wait for an active operation to finish before
 starting another. A failed app build preserves the last complete app; a ZIP
 replaces its previous version only after archive verification succeeds.
 
-Pushing a matching version tag (for example `v2.2.0`) triggers the GitHub release
+Pushing a matching version tag (for example `v2.3.0`) triggers the GitHub release
 workflow. It runs CI, builds both Apple Silicon (`arm64`) and Intel (`x86_64`)
 archives, checks each bundled worker, and publishes the packages plus SHA256
 checksums. No PyPI upload or Apple notarization occurs automatically.

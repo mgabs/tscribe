@@ -194,11 +194,13 @@ class Transcriber:
 
         model = self._get_model()
         lang = None if language == "auto" else language
-        segments_iter, info = model.transcribe(str(audio_path), language=lang)
+        options = {"word_timestamps": True} if diarize else {}
+        segments_iter, info = model.transcribe(str(audio_path), language=lang, **options)
 
         duration = getattr(info, "duration", 0.0) or 0.0
 
         segments = []
+        word_segments = []
         for seg in segments_iter:
             segments.append(
                 TranscriptSegment(
@@ -208,6 +210,11 @@ class Transcriber:
                     confidence=seg.avg_logprob,
                 )
             )
+            if diarize:
+                word_segments.append([
+                    TranscriptSegment(start=word.start, end=word.end, text=word.word)
+                    for word in (seg.words or [])
+                ])
             if progress_callback and duration > 0:
                 progress_callback(seg.end, duration)
 
@@ -224,7 +231,9 @@ class Transcriber:
             diarizer = Diarizer()
             speaker_turns = diarizer.diarize(audio_path, num_speakers=num_speakers)
             name_map = parse_speaker_names(names)
-            segments = attribute_speakers(segments, speaker_turns, name_map=name_map)
+            segments = attribute_speakers(
+                segments, speaker_turns, name_map=name_map, word_segments=word_segments,
+            )
 
         result = TranscriptResult(
             file=audio_path.name,

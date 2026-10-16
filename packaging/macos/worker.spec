@@ -9,8 +9,8 @@ for package in ('faster-whisper', 'ctranslate2', 'huggingface-hub', 'tokenizers'
 a = Analysis(
     [str(root / 'packaging/macos/worker_entrypoint.py')],
     pathex=[str(root / 'src')], datas=datas,
-    binaries=collect_dynamic_libs('ctranslate2'),
-    hiddenimports=['faster_whisper', 'sklearn'],
+    binaries=collect_dynamic_libs('ctranslate2') + collect_dynamic_libs('sherpa_onnx'),
+    hiddenimports=['faster_whisper', 'sherpa_onnx', 'sklearn'],
     excludes=['AppKit', 'Foundation', 'objc', 'pytest', 'mutmut', 'tkinter', 'PyInstaller'],
 )
 pyz = PYZ(a.pure)

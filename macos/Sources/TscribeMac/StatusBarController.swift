@@ -168,11 +168,8 @@ final class StatusBarController: NSObject {
 
     private func updateIcon() {
         guard let button = item.button else { return }
-        let image = NSImage(systemSymbolName: model.phase == "recording" ? "record.circle.fill" : "mic.fill", accessibilityDescription: "tscribe")
-        image?.size = NSSize(width: 18, height: 18)
-        image?.isTemplate = true
-        button.image = image
-        button.title = image == nil ? "T" : ""
+        button.image = StatusBarIcon.image(isRecording: model.phase == "recording")
+        button.title = ""
         button.setAccessibilityLabel("tscribe")
         button.toolTip = "tscribe — \(model.menuTitle(at: model.menuDate)) · \(model.message)"
     }
