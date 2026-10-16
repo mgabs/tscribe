@@ -80,5 +80,7 @@ jobs:
           enable-cache: true
       - name: Report compiler version
         run: swift --version
+      - name: Annotate Swift compiler diagnostics
+        run: echo "::add-matcher::.github/swift-problem-matcher.json"
       - name: Strict concurrency, runtime, and desktop checks
         run: make check
