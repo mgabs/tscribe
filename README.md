@@ -159,7 +159,7 @@ tscribe transcribe audio.wav                    # Local file (base model, txt+js
 tscribe transcribe "https://youtu.be/dQw4w9W"  # YouTube or other URL
 tscribe transcribe audio.wav --format all       # Output txt, json, srt, vtt
 tscribe transcribe audio.wav --language en      # Force language
-tscribe transcribe audio.wav --gpu              # Use GPU acceleration
+tscribe transcribe audio.wav --gpu              # Request NVIDIA CUDA acceleration
 ```
 
 SOURCE defaults to HEAD (most recent recording). Accepts file paths, URLs, or recording refs (HEAD, HEAD~N, session stems).
@@ -352,7 +352,7 @@ Available keys and defaults:
 | `transcription.model` | `"small"` | Whisper model size (tiny/base/small/medium/large) |
 | `transcription.language` | `"auto"` | Language code or auto-detect |
 | `transcription.output_formats` | `["txt","json"]` | Output formats (txt, json, srt, vtt) |
-| `transcription.gpu` | `false` | Use CUDA GPU acceleration (requires supported hardware) |
+| `transcription.gpu` | `false` | Request NVIDIA CUDA acceleration; fall back to CPU when unavailable |
 | `transcription.diarize` | `false` | Identify speakers by default |
 | `app.notifications` | `true` | Show macOS menu bar app notifications |
 | `app.recent_limit` | `5` | Number of recent recordings in the menu (positive integer) |
@@ -408,7 +408,7 @@ To manage and delete old recordings, run `tscribe clean` (e.g. `tscribe clean --
 
 ```bash
 make setup       # Install development and build dependencies from uv.lock
-make check       # Lint + Python tests + Swift/native-worker tests (macOS)
+make check       # Lint + Python + Swift + desktop menu bar tests (macOS)
 make lint test   # Checks for the Python CLI on Linux/macOS
 make dist        # Remove old distributions and build the current release
 make help        # All targets, including cleanup, installation, and launch
@@ -433,12 +433,12 @@ Python checks on Apple Silicon and Intel Macs. Dependency resolution is locked
 with `uv.lock`. Tests use synthetic audio and do not need capture permissions or
 Whisper model downloads.
 
-After committing/pushing the release changes, publish version 2.1.0 by pushing
+After committing/pushing the release changes, publish version 2.2.0 by pushing
 its matching tag:
 
 ```bash
-git tag -a v2.1.0 -m "tscribe 2.1.0"
-git push origin v2.1.0
+git tag -a v2.2.0 -m "tscribe 2.2.0"
+git push origin v2.2.0
 ```
 
 The release workflow rejects mismatched versions, waits for checks, builds the

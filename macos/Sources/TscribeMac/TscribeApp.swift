@@ -4,12 +4,11 @@ import AppKit
 @main
 struct TscribeNativeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var model = AppModel()
+    private var model: AppModel { delegate.model }
 
     var body: some Scene {
         WindowGroup("tscribe", id: "main") {
             MainView(model: model, delegate: delegate)
-                .onAppear { delegate.model = model }
                 .task { if model.phase == "loading" { await model.bootstrap() } }
         }
         .defaultSize(width: 900, height: 620)
@@ -28,12 +27,7 @@ struct TscribeNativeApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    weak var model: AppModel? {
-        didSet {
-            guard let model, statusController == nil else { return }
-            statusController = StatusBarController(model: model, delegate: self)
-        }
-    }
+    let model = AppModel()
     private(set) var statusController: StatusBarController?
     private var windowObservers: [NSObjectProtocol] = []
     private var mainWindows: [NSWindow] = []
@@ -55,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         NSApp.setActivationPolicy(.regular)
+        installStatusItem()
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(showMainWindow), name: Notification.Name("com.tscribe.show-main"), object: nil)
         DispatchQueue.main.async { self.showMainWindow() }
         if let index = CommandLine.arguments.firstIndex(of: "--smoke-report"), CommandLine.arguments.count > index + 1 {
@@ -63,6 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in self?.checkLaunch(report: report) }
             }
         }
+    }
+    func installStatusItem() {
+        guard statusController == nil else { return }
+        statusController = StatusBarController(model: model, delegate: self)
     }
     func attachWindow(_ window: NSWindow) {
         guard !mainWindows.contains(where: { $0 === window }) else { return }
@@ -80,7 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     @objc func hideToMenuBar() {
-        guard !hidingWindow, statusController?.isVisible == true else { return }
+        guard !hidingWindow else { return }
+        guard statusController?.isReachable == true else {
+            model.error = "The tscribe menu bar icon isn't visible. If you use Hidden Bar, expand its arrow, then hold ⌘ and drag tscribe to the always-visible side of its divider. Otherwise, make room in the menu bar or enable tscribe in macOS menu bar settings. This window will stay available."
+            showMainWindow()
+            return
+        }
         hidingWindow = true
         for window in mainWindows {
             if window.isMiniaturized { window.deminiaturize(nil) }
@@ -108,24 +112,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if exitingDuplicate { return .terminateNow }
-        if model?.busy == true { model?.quit(); return .terminateCancel }
-        model?.worker.stop()
+        if model.busy { model.quit(); return .terminateCancel }
+        model.worker.stop()
         return .terminateNow
     }
     private func checkLaunch(report: String) {
         let visible = NSApp.windows.contains { $0.isVisible && $0.canBecomeKey }
-        let ready = model?.phase == "idle" && model?.error == nil
+        let ready = model.phase == "idle" && model.error == nil
         guard (visible && ready && Date().timeIntervalSince(launched) > 2) || Date().timeIntervalSince(launched) > 30 else { return }
         smokeTimer?.invalidate()
-        var result: [String: Any] = ["window_visible": visible, "worker_ready": ready, "native_ui": true, "error": model?.error ?? "", "status_item_visible": statusController?.isVisible == true]
+        var result: [String: Any] = ["window_visible": visible, "worker_ready": ready, "native_ui": true, "error": model.error ?? "", "status_item_visible": statusController?.isReachable == true, "status_item": statusController?.diagnostics ?? [:]]
         Task { @MainActor in
+            let originalStatusItem = self.statusController
             if CommandLine.arguments.contains("--smoke-menu-bar"), let window = mainWindows.first {
+                result["menu_opens"] = self.statusController?.checkMenuOpens() == true
                 // Exercise the actual traffic-light actions as well as Cmd-M's
                 // native miniaturization path. Let AppKit notifications settle.
                 window.standardWindowButton(.miniaturizeButton)?.performClick(nil)
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 result["hidden_to_menu_bar"] = self.isHiddenToMenuBar
-                self.showMainWindow()
+                self.openWindowFromStatusMenu()
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 result["window_restored"] = window.isVisible && NSApp.activationPolicy() == .regular
                 if let (menu, index) = self.minimizeCommand(in: NSApp.mainMenu) {
@@ -134,18 +140,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 result["keyboard_minimize_to_menu_bar"] = self.isHiddenToMenuBar
-                self.showMainWindow()
+                self.openWindowFromStatusMenu()
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 window.performClose(nil)
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 result["close_to_menu_bar"] = self.isHiddenToMenuBar
-                self.showMainWindow()
+                self.openWindowFromStatusMenu()
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 result["closed_window_restored"] = NSApp.windows.contains { $0.isVisible && $0.canBecomeKey } && NSApp.activationPolicy() == .regular
             }
+            result["status_item_survives_window_close"] = originalStatusItem === self.statusController
             if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted]) { try? data.write(to: URL(fileURLWithPath: report)) }
-            self.model?.quit()
+            self.model.quit()
         }
+    }
+    private func openWindowFromStatusMenu() {
+        guard let menu = statusController?.menuController.menu,
+              let item = menu.item(withTitle: "Open tscribe") else { return }
+        menu.performActionForItem(at: menu.index(of: item))
     }
     private func minimizeCommand(in menu: NSMenu?) -> (NSMenu, Int)? {
         guard let menu else { return nil }
@@ -156,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return nil
     }
     private var isHiddenToMenuBar: Bool {
-        !NSApp.windows.contains { $0.isVisible && $0.canBecomeKey } && NSApp.activationPolicy() == .accessory && statusController?.isVisible == true
+        !NSApp.windows.contains { $0.isVisible && $0.canBecomeKey } && NSApp.activationPolicy() == .accessory && statusController?.isReachable == true
     }
 }
 

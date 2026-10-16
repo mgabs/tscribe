@@ -8,12 +8,13 @@ ARCH := $(shell uname -m)
 APP := dist/tscribe.app
 ARCHIVE := dist/tscribe-$(VERSION)-macos-$(ARCH).zip
 
-.PHONY: help setup lint test test-swift check cli app package checksums dist install run clean-dist clean
+.PHONY: help setup lint test test-swift test-menu-bar check cli app package checksums dist install run clean-dist clean
 
 help:
 	@printf '%s\n' \
 	  'make setup       Install development and app build dependencies' \
-	  'make check       Run lint, Python tests, and native Swift tests' \
+	  'make check       Run lint, Python, Swift, and desktop menu bar tests' \
+	  'make test-menu-bar  Verify the real icon, menu, and hide/restore behavior' \
 	  'make cli         Build the Python wheel and source distribution' \
 	  'make app         Build the self-contained macOS app' \
 	  'make package     Build and zip the macOS app' \
@@ -40,6 +41,10 @@ test-swift:
 	$(UV) run --locked --group dev $(SWIFT) test --disable-sandbox --package-path macos --scratch-path build/swift
 
 check: lint test test-swift
+	$(MAKE) test-menu-bar
+
+test-menu-bar:
+	$(UV) run --locked --group dev python packaging/macos/test_menu_bar.py
 
 # Hold one lock for the entire requested operation, including recursive Make.
 ifndef TSCRIBE_BUILD_LOCK_HELD

@@ -246,3 +246,36 @@ def test_default_output_preserves_dotted_names(tmp_path):
     transcriber.transcribe(audio, output_formats=['txt'])
     assert (tmp_path / 'meeting.v2.txt').exists()
     assert not (tmp_path / 'meeting.txt').exists()
+
+
+@pytest.mark.parametrize(('compute_type', 'expected'), [(None, 'int8'), ('float32', 'float32')])
+def test_unavailable_cuda_falls_back_to_cpu(compute_type, expected, caplog):
+    def supported(device):
+        if device == 'cuda':
+            raise RuntimeError('This CTranslate2 package was not compiled with CUDA support')
+        return {'int8', 'float32'}
+
+    with patch('ctranslate2.get_supported_compute_types', side_effect=supported), patch('faster_whisper.WhisperModel') as model:
+        transcriber = Transcriber(model_name='tiny', device='cuda', compute_type=compute_type)
+        assert transcriber._get_model() is transcriber._get_model()
+        model.assert_called_once_with('tiny', device='cpu', compute_type=expected)
+    assert 'using CPU transcription instead' in caplog.text
+
+
+def test_available_cuda_keeps_gpu_acceleration():
+    with patch('ctranslate2.get_supported_compute_types', return_value={'float16', 'float32'}) as supported, patch('faster_whisper.WhisperModel') as model:
+        Transcriber(model_name='tiny', device='cuda')._get_model()
+        supported.assert_called_once_with('cuda')
+        model.assert_called_once_with('tiny', device='cuda', compute_type='float16')
+
+
+def test_cpu_transcription_does_not_probe_cuda():
+    with patch('ctranslate2.get_supported_compute_types') as supported, patch('faster_whisper.WhisperModel'):
+        Transcriber()._get_model()
+        supported.assert_not_called()
+
+
+def test_model_loading_errors_are_not_hidden_by_cpu_fallback():
+    with patch('ctranslate2.get_supported_compute_types', return_value={'float16'}), patch('faster_whisper.WhisperModel', side_effect=RuntimeError('Model download failed')):
+        with pytest.raises(RuntimeError, match='Model download failed'):
+            Transcriber(device='cuda')._get_model()

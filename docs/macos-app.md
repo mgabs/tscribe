@@ -25,6 +25,12 @@ icon. **Hide to Menu Bar** does the same. Click the microphone icon and choose
 Dock icon. Recording and transcription continue while the window is hidden. Starting a second native instance
 activates the existing app.
 
+If the icon only appears when you expand **Hidden Bar**, hold **⌘** and drag
+tscribe to the always-visible side of Hidden Bar’s divider. The app keeps its
+window and Dock icon available when its menu bar icon is offscreen. This also
+applies when the menu bar is too crowded or the icon sits behind the camera
+housing.
+
 To install the build in `~/Applications` (quit the previous app first):
 
 ```bash
@@ -51,6 +57,9 @@ device indexes from the Python CLI are not native device IDs. Audio is converted
 to the configured sample rate and channel count before being written as PCM WAV.
 
 Whisper models download on first transcription. Audio is processed locally.
+The bundled CTranslate2 engine uses the CPU on macOS. `transcription.gpu` requests
+NVIDIA CUDA, not Apple GPU acceleration; leave it `false` on a Mac. If CUDA is
+unavailable, transcription falls back to CPU automatically.
 Experimental speaker grouping still uses the Python algorithm; replacing it with
 WhisperKit/SpeakerKit requires the quality, performance and parity evaluation in
 [TODO.md](../TODO.md).
@@ -72,6 +81,9 @@ window, including missing permissions, model download failures and worker exits.
 ```bash
 make check
 
+# Isolated temporary app: real icon, menu actions, and window hide/restore
+make test-menu-bar
+
 # Native audio conversion and Python worker integration, using isolated files
 TSCRIBE_PYTHON_EXECUTABLE="$PWD/.venv/bin/python" \
 TSCRIBE_CONFIG_FILE=/tmp/tscribe-tests/config.toml \
@@ -88,6 +100,13 @@ cat /tmp/tscribe-ui-check.json
 
 codesign --verify --deep --strict dist/tscribe.app
 ```
+
+The desktop menu bar check requires a logged-in, visible macOS desktop. It uses
+a temporary app with a separate bundle identifier and isolated settings, so the
+regular app can keep recording. It fails if a menu bar manager hides the test
+icon; expand the hidden-icons section before running it. Visibility checks use
+the actual onscreen position, including the camera housing, rather than only
+AppKit’s visibility flag.
 
 The launch check never records audio or grants capture permission. Audio tests
 exercise WAV conversion using synthetic samples, not microphone input. A real
@@ -120,7 +139,7 @@ cleanup commands share a lock: wait for an active operation to finish before
 starting another. A failed app build preserves the last complete app; a ZIP
 replaces its previous version only after archive verification succeeds.
 
-Pushing a matching version tag (for example `v2.1.0`) triggers the GitHub release
+Pushing a matching version tag (for example `v2.2.0`) triggers the GitHub release
 workflow. It runs CI, builds both Apple Silicon (`arm64`) and Intel (`x86_64`)
 archives, checks each bundled worker, and publishes the packages plus SHA256
 checksums. No PyPI upload or Apple notarization occurs automatically.

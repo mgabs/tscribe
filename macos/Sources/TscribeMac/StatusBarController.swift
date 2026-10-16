@@ -2,31 +2,152 @@ import AppKit
 import Combine
 import SwiftUI
 
+struct StatusItemPlacement {
+    static func isReachable(frame: NSRect, visibleAreas: [NSRect]) -> Bool {
+        frame.width > 0 && frame.height > 0 && visibleAreas.contains { $0.contains(frame) }
+    }
+}
+
+/// Actions are shared by the real status menu and its AppKit regression tests.
+@MainActor
+struct StatusMenuActions {
+    let open: () -> Void
+    let recordMicrophone: () -> Void
+    let recordSystemAudio: () -> Void
+    let stop: () -> Void
+    let openRecordings: () -> Void
+    let quit: () -> Void
+}
+
+@MainActor
+final class StatusMenuController: NSObject, NSMenuDelegate {
+    let menu = NSMenu(title: "tscribe")
+    private(set) var openCount = 0
+    private let model: AppModel
+    private let actions: StatusMenuActions
+    private var observation: AnyCancellable?
+    private var microphoneItem: NSMenuItem!
+    private var systemAudioItem: NSMenuItem!
+    private var stopItem: NSMenuItem!
+    private var messageItem: NSMenuItem!
+    private var recordingsItem: NSMenuItem!
+
+    init(model: AppModel, actions: StatusMenuActions) {
+        self.model = model
+        self.actions = actions
+        super.init()
+        menu.autoenablesItems = false
+        menu.delegate = self
+        add("Open tscribe", #selector(openWindow))
+        menu.addItem(.separator())
+        microphoneItem = add("Record Microphone", #selector(recordMicrophone))
+        systemAudioItem = add("Record System Audio", #selector(recordSystemAudio))
+        stopItem = add("Stop Recording", #selector(stopRecording))
+        menu.addItem(.separator())
+        messageItem = add(model.message, nil)
+        recordingsItem = add("Open Recordings", #selector(openRecordings))
+        add("Quit tscribe", #selector(quit))
+        refresh()
+        observation = model.objectWillChange.sink { [weak self] _ in
+            // Published values change after objectWillChange is emitted.
+            Task { @MainActor in self?.refresh() }
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) { refresh() }
+    func menuWillOpen(_ menu: NSMenu) { openCount += 1 }
+
+    private func refresh() {
+        // Keep the same menu items while AppKit is tracking the open menu.
+        microphoneItem.isEnabled = !model.busy
+        systemAudioItem.isEnabled = !model.busy
+        stopItem.isEnabled = model.phase == "recording"
+        messageItem.title = model.message
+        messageItem.isEnabled = false
+        recordingsItem.isEnabled = !model.recordingsPath.isEmpty
+    }
+
+    @discardableResult
+    private func add(_ title: String, _ action: Selector?) -> NSMenuItem {
+        let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        entry.target = self
+        menu.addItem(entry)
+        return entry
+    }
+    @objc private func openWindow() { actions.open() }
+    @objc private func recordMicrophone() { if !model.busy { actions.recordMicrophone() } }
+    @objc private func recordSystemAudio() { if !model.busy { actions.recordSystemAudio() } }
+    @objc private func stopRecording() { if model.phase == "recording" { actions.stop() } }
+    @objc private func openRecordings() { if !model.recordingsPath.isEmpty { actions.openRecordings() } }
+    @objc private func quit() { actions.quit() }
+}
+
 /// Own the AppKit item for the entire app lifetime, independently of its windows.
 @MainActor
-final class StatusBarController: NSObject, NSMenuDelegate {
+final class StatusBarController: NSObject {
     private let item: NSStatusItem
+    let menuController: StatusMenuController
     private let model: AppModel
-    private weak var delegate: AppDelegate?
     private var observation: AnyCancellable?
 
-    var isVisible: Bool {
-        item.isVisible && item.button?.window != nil
+    var isVisible: Bool { item.isVisible && item.button?.window != nil }
+
+    private var buttonFrame: NSRect {
+        guard let button = item.button, let window = button.window else { return .zero }
+        return window.convertToScreen(button.convert(button.bounds, to: nil))
+    }
+
+    var isReachable: Bool {
+        guard isVisible, item.button?.window?.isVisible == true else { return false }
+        let areas = NSScreen.screens.flatMap { screen -> [NSRect] in
+            if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea { return [left, right] }
+            return [screen.frame]
+        }
+        return StatusItemPlacement.isReachable(frame: buttonFrame, visibleAreas: areas)
+    }
+
+    var diagnostics: [String: Any] {
+        ["requested_visible": item.isVisible, "window_visible": item.button?.window?.isVisible == true,
+         "frame": NSStringFromRect(buttonFrame), "reachable": isReachable,
+         "menu_items": menuController.menu.numberOfItems,
+         "screens": NSScreen.screens.map { NSStringFromRect($0.frame) },
+         "window_number": item.button?.window?.windowNumber ?? -1]
+    }
+
+    func checkMenuOpens() -> Bool {
+        let before = menuController.openCount
+        let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.menuController.menu.cancelTracking() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        item.button?.performClick(nil)
+        timer.invalidate()
+        return menuController.openCount > before
+    }
+
+    func dispose() {
+        observation?.cancel()
+        NSStatusBar.system.removeStatusItem(item)
     }
 
     init(model: AppModel, delegate: AppDelegate) {
         self.model = model
-        self.delegate = delegate
-        // An icon-only, fixed-width item fits crowded/notched menu bars better
-        // than the former SwiftUI icon plus application-name label.
+        menuController = StatusMenuController(model: model, actions: StatusMenuActions(
+            open: { [weak delegate] in delegate?.showMainWindow() },
+            recordMicrophone: { Task { await model.startRecording(system: false) } },
+            recordSystemAudio: { Task { await model.startRecording(system: true) } },
+            stop: { Task { await model.stopRecording() } },
+            openRecordings: { model.openRecordings() },
+            quit: { model.quit() }
+        ))
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
+        item.autosaveName = NSStatusItem.AutosaveName("tscribe.main")
         item.behavior = []
         item.isVisible = true
-        let menu = NSMenu()
-        menu.delegate = self
-        menu.autoenablesItems = false
-        item.menu = menu
+        // Assign a populated menu: an empty status menu may not start tracking,
+        // so relying on menuNeedsUpdate alone can leave the icon unresponsive.
+        item.menu = menuController.menu
         updateIcon()
         observation = model.objectWillChange.sink { [weak self] _ in
             Task { @MainActor in self?.updateIcon() }
@@ -35,8 +156,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
     private func updateIcon() {
         guard let button = item.button else { return }
-        let recording = model.phase == "recording"
-        let image = NSImage(systemSymbolName: recording ? "record.circle.fill" : "mic.fill", accessibilityDescription: "tscribe")
+        let image = NSImage(systemSymbolName: model.phase == "recording" ? "record.circle.fill" : "mic.fill", accessibilityDescription: "tscribe")
         image?.size = NSSize(width: 18, height: 18)
         image?.isTemplate = true
         button.image = image
@@ -44,32 +164,6 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         button.setAccessibilityLabel("tscribe")
         button.toolTip = "tscribe — \(model.menuTitle(at: model.menuDate)) · \(model.message)"
     }
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        add("Open tscribe", #selector(openWindow), to: menu)
-        menu.addItem(.separator())
-        add("Record Microphone", #selector(recordMicrophone), enabled: !model.busy, to: menu)
-        add("Record System Audio", #selector(recordSystemAudio), enabled: !model.busy, to: menu)
-        add("Stop Recording", #selector(stopRecording), enabled: model.phase == "recording", to: menu)
-        menu.addItem(.separator())
-        add(model.message, nil, enabled: false, to: menu)
-        add("Open Recordings", #selector(openRecordings), to: menu)
-        add("Quit tscribe", #selector(quit), to: menu)
-    }
-
-    private func add(_ title: String, _ action: Selector?, enabled: Bool = true, to menu: NSMenu) {
-        let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        entry.target = self
-        entry.isEnabled = enabled
-        menu.addItem(entry)
-    }
-    @objc private func openWindow() { delegate?.showMainWindow() }
-    @objc private func recordMicrophone() { Task { await model.startRecording(system: false) } }
-    @objc private func recordSystemAudio() { Task { await model.startRecording(system: true) } }
-    @objc private func stopRecording() { Task { await model.stopRecording() } }
-    @objc private func openRecordings() { model.openRecordings() }
-    @objc private func quit() { model.quit() }
 }
 
 /// Find the SwiftUI window without replacing SwiftUI's own NSWindowDelegate.

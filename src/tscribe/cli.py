@@ -411,7 +411,7 @@ def _download_audio(url, output_dir):
 @click.option("--language", default=None, help="Language code (default: auto-detect).")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output path prefix (optional transcript extension).")
 @click.option("--format", "fmt", default=None, help="Output format: txt,json,srt,vtt,all")
-@click.option("--gpu/--no-gpu", default=None, help="Use GPU acceleration.")
+@click.option("--gpu/--no-gpu", default=None, help="Request NVIDIA CUDA acceleration; fall back to CPU if unavailable.")
 @click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization.")
 @click.option("--speakers", type=int, default=None, help="Expected number of speakers.")
 @click.option("--names", default=None, help="Comma-separated speaker names (e.g. 'Alice,Bob').")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -117,6 +118,20 @@ class Transcriber:
 
             os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
             os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
+            if self._device == "cuda":
+                import ctranslate2
+
+                try:
+                    ctranslate2.get_supported_compute_types("cuda")
+                except (RuntimeError, ValueError) as error:
+                    logging.getLogger(__name__).warning(
+                        "CUDA is unavailable (%s); using CPU transcription instead.", error
+                    )
+                    self._device = "cpu"
+                    supported = ctranslate2.get_supported_compute_types("cpu")
+                    if self._compute_type not in supported:
+                        self._compute_type = "int8" if "int8" in supported else "float32"
 
             try:
                 import av
