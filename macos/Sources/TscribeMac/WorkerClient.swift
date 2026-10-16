@@ -41,7 +41,7 @@ final class WorkerClient {
         outgoing.fileHandleForReading.readabilityHandler = { [weak self, weak task] handle in
             let data = handle.availableData
             guard !data.isEmpty else { handle.readabilityHandler = nil; return }
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self, weak task] in
                 guard let task, self?.process === task else { return }
                 self?.receive(data)
             }
@@ -60,7 +60,7 @@ final class WorkerClient {
             else { FileHandle.standardError.write(data) }
         }
         task.terminationHandler = { [weak self] process in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self, self.process === process else { return }
                 self.input = nil
                 self.process = nil

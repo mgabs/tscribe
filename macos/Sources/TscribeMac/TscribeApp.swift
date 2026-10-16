@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let index = CommandLine.arguments.firstIndex(of: "--smoke-report"), CommandLine.arguments.count > index + 1 {
             let report = CommandLine.arguments[index + 1]
             smokeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.checkLaunch(report: report) }
+                Task { @MainActor [weak self] in self?.checkLaunch(report: report) }
             }
         }
     }
@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         for name in [NSWindow.willCloseNotification, NSWindow.didMiniaturizeNotification] {
             windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.hideToMenuBar() }
+                Task { @MainActor [weak self] in self?.hideToMenuBar() }
             })
         }
     }

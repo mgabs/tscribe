@@ -229,11 +229,16 @@ def test_elapsed_seconds(recorder, config, tmp_path, mock_popen):
     mock_proc = mock_popen(wav_path)
 
     with patch("tscribe.recorder.pipewire_recorder.subprocess.Popen", return_value=mock_proc), \
-         patch("tscribe.pipewire_devices.resolve_pipewire_target", return_value=None):
+         patch("tscribe.pipewire_devices.resolve_pipewire_target", return_value=None), \
+         patch("tscribe.recorder.pipewire_recorder.time.monotonic", return_value=100.0) as clock:
         recorder.start(wav_path, config)
-
-    assert recorder.elapsed_seconds > 0.0
-    recorder._stop_event.set()
+        try:
+            # Immediate reads may share one clock tick, especially on Windows.
+            assert recorder.elapsed_seconds == 0.0
+            clock.return_value = 103.25
+            assert recorder.elapsed_seconds == 3.25
+        finally:
+            recorder.stop()
 
 
 # ──── level ────

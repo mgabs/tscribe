@@ -57,7 +57,7 @@ final class AppModel: ObservableObject {
     init() {
         // Publish elapsed-time updates only during capture.
         menuTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self, self.phase == "recording" else { return }
                 self.menuDate = Date()
             }
@@ -69,7 +69,7 @@ final class AppModel: ObservableObject {
             if event == "worker-stopped" { self.error = data["message"] as? String }
         }
         capture.onFailure = { [weak self] error in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.error = error.localizedDescription
                 if self.phase == "recording" { await self.stopRecording() }

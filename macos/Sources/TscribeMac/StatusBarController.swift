@@ -56,7 +56,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         refresh()
         observation = model.objectWillChange.sink { [weak self] _ in
             // Published values change after objectWillChange is emitted.
-            Task { @MainActor in self?.refresh() }
+            Task { @MainActor [weak self] in self?.refresh() }
         }
     }
 
@@ -162,7 +162,7 @@ final class StatusBarController: NSObject {
         item.menu = menuController.menu
         updateIcon()
         observation = model.objectWillChange.sink { [weak self] _ in
-            Task { @MainActor in self?.updateIcon() }
+            Task { @MainActor [weak self] in self?.updateIcon() }
         }
     }
 

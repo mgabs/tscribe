@@ -464,12 +464,12 @@ Python checks on Apple Silicon and Intel Macs. Dependency resolution is locked
 with `uv.lock`. Tests use synthetic audio and do not need capture permissions or
 Whisper model downloads.
 
-After committing/pushing the release changes, publish version 2.3.0 by pushing
+After committing/pushing the release changes, publish version 2.3.1 by pushing
 its matching tag:
 
 ```bash
-git tag -a v2.3.0 -m "tscribe 2.3.0"
-git push origin v2.3.0
+git tag -a v2.3.1 -m "tscribe 2.3.1"
+git push origin v2.3.1
 ```
 
 The release workflow rejects mismatched versions, waits for checks, builds the

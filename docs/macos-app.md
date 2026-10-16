@@ -212,7 +212,7 @@ cleanup commands share a lock: wait for an active operation to finish before
 starting another. A failed app build preserves the last complete app; a ZIP
 replaces its previous version only after archive verification succeeds.
 
-Pushing a matching version tag (for example `v2.3.0`) triggers the GitHub release
+Pushing a matching version tag (for example `v2.3.1`) triggers the GitHub release
 workflow. It runs CI, builds both Apple Silicon (`arm64`) and Intel (`x86_64`)
 archives, checks each bundled worker, and publishes the packages plus SHA256
 checksums. No PyPI upload or Apple notarization occurs automatically.
