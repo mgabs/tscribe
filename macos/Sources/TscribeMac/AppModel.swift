@@ -156,14 +156,15 @@ final class AppModel: ObservableObject {
         phase = "idle"; started = nil; activeStem = nil
         if notifications {
             let completionMessage = result["message"] as? String ?? "Recording saved"
-            Task { @MainActor in
-                let center = UNUserNotificationCenter.current()
-                if (try? await center.requestAuthorization(options: [.alert, .sound])) == true {
-                    let content = UNMutableNotificationContent()
-                    content.title = "tscribe"
-                    content.body = completionMessage
-                    try? await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
-                }
+            // Use callback APIs so older SDK notification objects stay within
+            // their callback instead of crossing an actor suspension point.
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { @Sendable granted, _ in
+                guard granted else { return }
+                let content = UNMutableNotificationContent()
+                content.title = "tscribe"
+                content.body = completionMessage
+                let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
             }
         }
         if quitting { quit() }
