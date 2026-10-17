@@ -101,7 +101,7 @@ def test_format_srt_with_speakers():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_speaker_formatters.py -v`  
+Run: `rtk uv run pytest tests/test_speaker_formatters.py -v`
 Expected: FAIL (AttributeError or assertion failure due to missing speaker grouping).
 
 - [ ] **Step 3: Add `scikit-learn` dependency & update `src/tscribe/transcriber.py`**
@@ -199,7 +199,7 @@ class TranscriptResult:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_speaker_formatters.py -v`  
+Run: `rtk uv run pytest tests/test_speaker_formatters.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -276,7 +276,7 @@ def test_attribute_speakers_no_turns():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_diarization_attribution.py -v`  
+Run: `rtk uv run pytest tests/test_diarization_attribution.py -v`
 Expected: FAIL (ModuleNotFoundError: No module named 'tscribe.diarization').
 
 - [ ] **Step 3: Implement `src/tscribe/diarization.py` matching logic**
@@ -359,7 +359,7 @@ def attribute_speakers(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_diarization_attribution.py -v`  
+Run: `rtk uv run pytest tests/test_diarization_attribution.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -420,7 +420,7 @@ def test_empty_audio_returns_empty_turns(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_diarizer_engine.py -v`  
+Run: `rtk uv run pytest tests/test_diarizer_engine.py -v`
 Expected: FAIL (`AttributeError: 'Diarizer' object has no attribute '_cluster_embeddings'`).
 
 - [ ] **Step 3: Implement `Diarizer` in `src/tscribe/diarization.py`**
@@ -526,7 +526,7 @@ class Diarizer:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_diarizer_engine.py -v`  
+Run: `rtk uv run pytest tests/test_diarizer_engine.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -589,7 +589,7 @@ def test_transcriber_diarize_flow(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_transcriber_diarize.py -v`  
+Run: `rtk uv run pytest tests/test_transcriber_diarize.py -v`
 Expected: FAIL (TypeError: Transcriber.transcribe() got unexpected keyword argument 'diarize').
 
 - [ ] **Step 3: Update `Transcriber.transcribe()` in `src/tscribe/transcriber.py`**
@@ -608,7 +608,7 @@ Add arguments `diarize: bool = False`, `num_speakers: int | None = None`, `names
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_transcriber_diarize.py -v`  
+Run: `rtk uv run pytest tests/test_transcriber_diarize.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -667,7 +667,7 @@ def test_cli_label_command(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_cli_diarize.py -v`  
+Run: `rtk uv run pytest tests/test_cli_diarize.py -v`
 Expected: FAIL (No such command 'label').
 
 - [ ] **Step 3: Update `cli.py` and `config.py`**
@@ -689,12 +689,12 @@ Expected: FAIL (No such command 'label').
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_cli_diarize.py -v`  
+Run: `rtk uv run pytest tests/test_cli_diarize.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Full test suite verification**
 
-Run: `rtk uv run pytest -m "not slow"`  
+Run: `rtk uv run pytest -m "not slow"`
 Expected: All tests pass.
 
 - [ ] **Step 6: Commit**

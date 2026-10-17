@@ -9,11 +9,12 @@ ARCH := $(shell uname -m)
 APP := dist/tscribe.app
 ARCHIVE := dist/tscribe-$(VERSION)-macos-$(ARCH).zip
 
-.PHONY: help setup lint test test-clock test-swift test-regressions test-menu-bar check cli app package checksums dist install run clean-dist clean
+.PHONY: help setup pre-commit lint test test-clock test-swift test-regressions test-menu-bar check cli app package checksums dist install run clean-dist clean
 
 help:
 	@printf '%s\n' \
 	  'make setup       Install development and app build dependencies' \
+	  'make pre-commit  Run pre-commit hooks on all files' \
 	  'make check       Run lint, Python, Swift, and desktop menu bar tests' \
 	  'make test-clock  Run deterministic repeated/advancing clock checks' \
 	  'make test-regressions  Run clock and strict Swift regression checks' \
@@ -29,6 +30,9 @@ help:
 
 setup:
 	$(UV) sync --group dev --group mac-app
+
+pre-commit:
+	$(UV) run --locked --group dev pre-commit run --all-files
 
 lint:
 	$(UV) run --locked --group dev ruff check src tests packaging/macos
