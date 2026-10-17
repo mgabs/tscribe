@@ -13,7 +13,7 @@
       <stop offset="0%" stop-color="#dce4ec"/>
       <stop offset="100%" stop-color="#b0c0d4"/>
     </linearGradient>
-    
+
     <!-- Microphone metallic gradients -->
     <linearGradient id="micBody" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#2c3440"/>
@@ -43,7 +43,7 @@
     <filter id="dropShadowMic" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#020617" flood-opacity="0.35"/>
     </filter>
-    
+
     <!-- Grille Pattern -->
     <pattern id="grillePattern" width="6" height="6" patternUnits="userSpaceOnUse">
       <circle cx="3" cy="3" r="1.2" fill="#334155" opacity="0.6"/>
@@ -54,38 +54,38 @@
   <g filter="url(#dropShadowNote)">
     <!-- Main page outline with dog-ear fold at top right -->
     <!-- Document bounds: x=100, y=56, width=312, height=400 -->
-    <path d="M 124 56 
-             L 344 56 
-             L 412 124 
-             L 412 432 
-             A 24 24 0 0 1 388 456 
-             L 124 456 
-             A 24 24 0 0 1 100 432 
-             L 100 80 
-             A 24 24 0 0 1 124 56 Z" 
-          fill="url(#noteBg)" 
-          stroke="url(#noteBorder)" 
+    <path d="M 124 56
+             L 344 56
+             L 412 124
+             L 412 432
+             A 24 24 0 0 1 388 456
+             L 124 456
+             A 24 24 0 0 1 100 432
+             L 100 80
+             A 24 24 0 0 1 124 56 Z"
+          fill="url(#noteBg)"
+          stroke="url(#noteBorder)"
           stroke-width="3"/>
 
     <!-- Folded Corner -->
-    <path d="M 344 56 
-             L 344 108 
-             A 16 16 0 0 0 360 124 
-             L 412 124 Z" 
-          fill="url(#foldGradient)" 
-          stroke="url(#noteBorder)" 
+    <path d="M 344 56
+             L 344 108
+             A 16 16 0 0 0 360 124
+             L 412 124 Z"
+          fill="url(#foldGradient)"
+          stroke="url(#noteBorder)"
           stroke-width="2"/>
-    
+
     <!-- Text / Waveform Lines on Document -->
     <!-- Header accent line -->
     <rect x="140" y="100" width="140" height="10" rx="5" fill="#3b82f6" opacity="0.8"/>
-    
+
     <!-- Note body lines -->
     <rect x="140" y="140" width="232" height="8" rx="4" fill="#94a3b8" opacity="0.4"/>
     <rect x="140" y="170" width="190" height="8" rx="4" fill="#94a3b8" opacity="0.35"/>
     <rect x="140" y="200" width="220" height="8" rx="4" fill="#94a3b8" opacity="0.35"/>
     <rect x="140" y="230" width="160" height="8" rx="4" fill="#94a3b8" opacity="0.3"/>
-    
+
     <!-- Transcription timestamps & text hints -->
     <circle cx="148" cy="274" r="5" fill="#ef4444" opacity="0.6"/>
     <rect x="164" y="270" width="180" height="8" rx="4" fill="#94a3b8" opacity="0.35"/>
@@ -107,11 +107,11 @@
     <rect x="252" y="340" width="4" height="116" fill="#f8fafc" opacity="0.3"/>
 
     <!-- U-shaped Cradle / Mount -->
-    <path d="M 196 230 
-             A 60 60 0 0 0 316 230" 
-          fill="none" 
-          stroke="url(#standGrad)" 
-          stroke-width="12" 
+    <path d="M 196 230
+             A 60 60 0 0 0 316 230"
+          fill="none"
+          stroke="url(#standGrad)"
+          stroke-width="12"
           stroke-linecap="round"/>
     <!-- Mount joint connectors -->
     <circle cx="196" cy="230" r="10" fill="url(#micBody)"/>

@@ -3,15 +3,15 @@
 
 # Design: macOS Menu Bar App (`tscribe app`)
 
-**Status:** Draft / Pending Review  
-**Date:** 2026-10-15  
-**Target Platform:** macOS (Darwin ARM64/x86_64)  
+**Status:** Draft / Pending Review
+**Date:** 2026-10-15
+**Target Platform:** macOS (Darwin ARM64/x86_64)
 
 ---
 
 ## 1. Executive Summary
 
-This feature adds a native macOS status/menu bar application to `tscribe` (`tscribe app`) using `rumps` (Python Cocoa `NSStatusBar` framework). 
+This feature adds a native macOS status/menu bar application to `tscribe` (`tscribe app`) using `rumps` (Python Cocoa `NSStatusBar` framework).
 
 It allows users to control recordings (Microphone or System Audio) directly from their macOS menu bar with live elapsed-time feedback (`🔴 00:15`), toggle speaker diarization, automatically transcribe in the background, receive native macOS completion notifications, and copy or open the resulting transcripts with a single click.
 

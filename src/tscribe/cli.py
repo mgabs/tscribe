@@ -23,6 +23,24 @@ def _load_config():
         raise click.ClickException(f"Cannot load config {path}: {exc}") from exc
 
 
+def _session_manager(cfg=None, ensure: bool = False):
+    """Build a SessionManager for the configured recordings directory."""
+    from tscribe.paths import ensure_dirs, get_data_dir, get_recordings_dir
+    from tscribe.session import SessionManager
+
+    cfg = cfg or _load_config()
+    data_dir = get_data_dir(cfg.storage.data_dir)
+    if ensure:
+        ensure_dirs(data_dir)
+    return SessionManager(get_recordings_dir(data_dir))
+
+
+def _ref_map(mgr) -> dict[str, str]:
+    """Map session stems to HEAD/HEAD~N refs (newest first)."""
+    sessions = mgr.list_sessions(limit=None, sort_by="date")
+    return {s.stem: (f"HEAD~{i}" if i else "HEAD") for i, s in enumerate(sessions)}
+
+
 def _transcription_progress(current: float, total: float, start_time: float) -> None:
     """Render an in-place progress bar for transcription."""
     frac = min(current / total, 1.0) if total > 0 else 0.0
@@ -63,13 +81,7 @@ def _default_loopback() -> bool:
             return True  # WASAPI loopback available for any output device
         except ImportError:
             pass
-        try:
-            from tscribe.devices import list_devices
-
-            return any(d.is_loopback for d in list_devices(loopback_only=True))
-        except Exception:
-            return False
-    if sys.platform == "darwin":
+    if sys.platform in ("win32", "darwin"):
         try:
             from tscribe.devices import list_devices
 
@@ -223,9 +235,7 @@ def _auto_transcribe(
     from tscribe.transcriber import Transcriber
 
     model_name = cfg.transcription.model
-    should_diarize = (
-        diarize if diarize is not None else getattr(cfg.transcription, "diarize", False)
-    )
+    should_diarize = diarize if diarize is not None else cfg.transcription.diarize
 
     click.echo(f"Transcribing with model '{model_name}'...")
     try:
@@ -270,17 +280,10 @@ def main():
 @click.option("--names", default=None, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
 def record(device, loopback, output, no_transcribe, sample_rate, channels, diarize, speakers, names):
     """Record audio from system audio (default) or microphone."""
-    from pathlib import Path
-
-    from tscribe.paths import ensure_dirs, get_data_dir, get_recordings_dir
     from tscribe.recorder import RecordingConfig
-    from tscribe.session import SessionManager
 
     cfg = _load_config()
-    data_dir = get_data_dir(cfg.storage.data_dir)
-    ensure_dirs(data_dir)
-
-    session_mgr = SessionManager(get_recordings_dir(data_dir))
+    session_mgr = _session_manager(cfg, ensure=True)
     stem = session_mgr.generate_session_stem()
 
     if output:
@@ -370,8 +373,6 @@ def record(device, loopback, output, no_transcribe, sample_rate, channels, diari
 
 def _download_audio(url, output_dir):
     """Download audio from a URL using yt-dlp. Returns path to WAV file."""
-    from pathlib import Path
-
     try:
         import yt_dlp
     except ImportError:
@@ -426,27 +427,24 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
     """
     import tempfile
     import wave
-    from pathlib import Path
+    from datetime import datetime, timezone
 
-    from tscribe.paths import ensure_dirs, get_data_dir, get_recordings_dir
-    from tscribe.session import SessionManager
+    from tscribe.constants import VALID_OUTPUT_FORMATS
     from tscribe.transcriber import Transcriber
 
     cfg = _load_config()
-    data_dir = get_data_dir(cfg.storage.data_dir)
 
     model_name = model or cfg.transcription.model
     lang = language or cfg.transcription.language
 
     if fmt:
         if fmt == "all":
-            output_formats = ["txt", "json", "srt", "vtt"]
+            output_formats = list(VALID_OUTPUT_FORMATS)
         else:
             output_formats = [f.strip() for f in fmt.split(",")]
     else:
         output_formats = cfg.transcription.output_formats
 
-    from tscribe.constants import VALID_OUTPUT_FORMATS
     invalid_formats = set(output_formats) - set(VALID_OUTPUT_FORMATS)
     if invalid_formats:
         raise click.ClickException(f"Unknown output formats: {', '.join(sorted(invalid_formats))}")
@@ -461,14 +459,12 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
     is_url = "://" in source
 
     if is_ref:
-        ensure_dirs(data_dir)
-        mgr = SessionManager(get_recordings_dir(data_dir))
+        mgr = _session_manager(cfg, ensure=True)
         session = _resolve_session(source, mgr)
         audio_path = session.wav_path
         stem = session.stem
     elif is_url:
-        ensure_dirs(data_dir)
-        mgr = SessionManager(get_recordings_dir(data_dir))
+        mgr = _session_manager(cfg, ensure=True)
         with tempfile.TemporaryDirectory(prefix="tscribe_") as tmp_dir:
             downloaded = _download_audio(source, tmp_dir)
             stem, audio_path = mgr.import_external(downloaded)
@@ -486,9 +482,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
             pass
 
         meta = {
-            "created": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ).isoformat(),
+            "created": datetime.now(timezone.utc).isoformat(),
             "duration_seconds": duration,
             "sample_rate": sample_rate,
             "channels": channels,
@@ -505,8 +499,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
         audio_path = Path(source)
         if not audio_path.exists():
             # Maybe it's a session stem (e.g. 2025-01-15-143022)
-            ensure_dirs(data_dir)
-            mgr = SessionManager(get_recordings_dir(data_dir))
+            mgr = _session_manager(cfg, ensure=True)
             session = mgr.get_session(source)
             if session:
                 audio_path = session.wav_path
@@ -520,9 +513,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
     device = "cuda" if (gpu if gpu is not None else cfg.transcription.gpu) else "cpu"
     transcriber = Transcriber(model_name=model_name, device=device)
 
-    should_diarize = (
-        diarize if diarize is not None else getattr(cfg.transcription, "diarize", False)
-    )
+    should_diarize = diarize if diarize is not None else cfg.transcription.diarize
 
     click.echo(f"Transcribing {audio_path.name} with model '{model_name}'...")
     t_start = time.monotonic()
@@ -582,16 +573,8 @@ def _stem_date_str(stem: str) -> str:
 @click.option("--no-header", is_flag=True, help="Omit table header.")
 def list_recordings(limit, search, sort_by, no_header):
     """List past recordings and their transcription status."""
-    from tscribe.paths import get_data_dir, get_recordings_dir
-    from tscribe.session import SessionManager
-
-    cfg = _load_config()
-    data_dir = get_data_dir(cfg.storage.data_dir)
-    mgr = SessionManager(get_recordings_dir(data_dir))
-
-    # Build stem→ref map from date-sorted order
-    all_by_date = mgr.list_sessions(limit=None, sort_by="date")
-    ref_map = {s.stem: (f"HEAD~{i}" if i else "HEAD") for i, s in enumerate(all_by_date)}
+    mgr = _session_manager()
+    ref_map = _ref_map(mgr)
 
     sessions = mgr.list_sessions(limit=limit, sort_by=sort_by, search=search)
     if not sessions:
@@ -637,16 +620,8 @@ def search(query, limit, sort_by):
       tscribe search "action items"
       tscribe search meeting -n 50
     """
-    from tscribe.paths import get_data_dir, get_recordings_dir
-    from tscribe.session import SessionManager
-
-    cfg = _load_config()
-    data_dir = get_data_dir(cfg.storage.data_dir)
-    mgr = SessionManager(get_recordings_dir(data_dir))
-
-    # Build stem→ref map from date-sorted order
-    all_by_date = mgr.list_sessions(limit=None, sort_by="date")
-    ref_map = {s.stem: (f"HEAD~{i}" if i else "HEAD") for i, s in enumerate(all_by_date)}
+    mgr = _session_manager()
+    ref_map = _ref_map(mgr)
 
     results = mgr.search_transcripts(query, limit=limit, sort_by=sort_by)
     if not results:
@@ -820,14 +795,7 @@ def play(ref):
       tscribe play HEAD~1     Play previous recording
       tscribe play 2025-01-15-143022   Play by session ID
     """
-    from tscribe.paths import get_data_dir, get_recordings_dir
-    from tscribe.session import SessionManager
-
-    cfg = _load_config()
-    data_dir = get_data_dir(cfg.storage.data_dir)
-    mgr = SessionManager(get_recordings_dir(data_dir))
-
-    session = _resolve_session(ref, mgr)
+    session = _resolve_session(ref, _session_manager())
 
     dur_str = ""
     if session.duration_seconds is not None:
@@ -841,14 +809,9 @@ def play(ref):
 
 def _resolve_transcript_path(ref, fmt):
     """Resolve a session ref + optional format to a transcript file path."""
-    from tscribe.paths import get_data_dir, get_recordings_dir
-    from tscribe.session import SessionManager
+    from tscribe.constants import VALID_OUTPUT_FORMATS
 
-    cfg = _load_config()
-    data_dir = get_data_dir(cfg.storage.data_dir)
-    mgr = SessionManager(get_recordings_dir(data_dir))
-
-    session = _resolve_session(ref, mgr)
+    session = _resolve_session(ref, _session_manager())
 
     if fmt:
         path = session.wav_path.with_suffix(f".{fmt}")
@@ -856,7 +819,7 @@ def _resolve_transcript_path(ref, fmt):
             raise click.ClickException(f"File not found: {path.name}")
         return path
 
-    for ext in ["txt", "json", "srt", "vtt"]:
+    for ext in VALID_OUTPUT_FORMATS:
         candidate = session.wav_path.with_suffix(f".{ext}")
         if candidate.exists():
             return candidate
@@ -925,14 +888,7 @@ def path(ref, fmt):
       tscribe path -f wav          Path to audio file
       tscribe path HEAD~1 -f json  Path to previous JSON transcript
     """
-    from tscribe.paths import get_data_dir, get_recordings_dir
-    from tscribe.session import SessionManager
-
-    cfg = _load_config()
-    data_dir = get_data_dir(cfg.storage.data_dir)
-    mgr = SessionManager(get_recordings_dir(data_dir))
-
-    session = _resolve_session(ref, mgr)
+    session = _resolve_session(ref, _session_manager())
     ext = fmt or "txt"
     file_path = session.wav_path.with_suffix(f".{ext}")
     if not file_path.exists():
@@ -946,11 +902,8 @@ def path(ref, fmt):
 def label(ref, names):
     """Re-label speaker names in an existing transcript."""
     import json
-    from pathlib import Path
 
     from tscribe.diarization import parse_speaker_names
-    from tscribe.paths import get_data_dir, get_recordings_dir
-    from tscribe.session import SessionManager
     from tscribe.transcriber import TranscriptResult, TranscriptSegment
 
     json_path = None
@@ -963,10 +916,7 @@ def label(ref, names):
     elif ref.endswith(".json"):
         raise click.ClickException(f"File not found: {ref}")
     else:
-        cfg = _load_config()
-        data_dir = get_data_dir(cfg.storage.data_dir)
-        mgr = SessionManager(get_recordings_dir(data_dir))
-        session = _resolve_session(ref, mgr)
+        session = _resolve_session(ref, _session_manager())
         json_path = session.wav_path.with_suffix(".json")
 
     if not json_path or not json_path.exists():
@@ -1016,23 +966,14 @@ def label(ref, names):
         segments=segments,
     )
 
-    base_path = json_path.with_suffix("")
     json_path.write_text(json.dumps(result.to_json(), indent=2))
 
     updated_files = [json_path.name]
-    txt_path = base_path.with_suffix(".txt")
-    srt_path = base_path.with_suffix(".srt")
-    vtt_path = base_path.with_suffix(".vtt")
-
-    if txt_path.exists():
-        txt_path.write_text(result.to_txt())
-        updated_files.append(txt_path.name)
-    if srt_path.exists():
-        srt_path.write_text(result.to_srt())
-        updated_files.append(srt_path.name)
-    if vtt_path.exists():
-        vtt_path.write_text(result.to_vtt())
-        updated_files.append(vtt_path.name)
+    for ext, render in (("txt", result.to_txt), ("srt", result.to_srt), ("vtt", result.to_vtt)):
+        out_path = json_path.with_suffix(f".{ext}")
+        if out_path.exists():
+            out_path.write_text(render())
+            updated_files.append(out_path.name)
 
     click.echo(f"Updated speaker labels in {', '.join(updated_files)}.")
 

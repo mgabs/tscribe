@@ -48,6 +48,7 @@ use_setproctitle = false
 dev = [
     "ruff>=0.11,<1",
     "mutmut>=3.8,<4",
+    "pre-commit>=3.5",
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-mock>=3.0",

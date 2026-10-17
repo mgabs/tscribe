@@ -1,8 +1,8 @@
 # Design: Offline Speaker Diarization with Custom Speaker Names
 
-**Status:** Draft / Pending Review  
-**Date:** 2026-10-15  
-**Target Version:** v1.2  
+**Status:** Draft / Pending Review
+**Date:** 2026-10-15
+**Target Version:** v1.2
 
 ---
 
@@ -36,7 +36,7 @@ flowchart TD
 ### Steps:
 1. **Voice Activity Detection:** Uses bundled Silero VAD (`faster_whisper/assets/silero_vad_v6.onnx`) to extract speech intervals and silence boundaries.
 2. **Feature & Embedding Extraction:** For each speech segment, audio frames are passed into the CAM++ ONNX model (`campplus.onnx`, ~24MB) to produce a 192-dimensional speaker embedding vector.
-3. **Clustering:** 
+3. **Clustering:**
    - Computes pairwise cosine distance matrix between segment embeddings.
    - Applies Agglomerative Hierarchical Clustering (`scikit-learn`).
    - If `--speakers N` is provided, clusters into exactly $N$ clusters; otherwise, auto-determines cluster count using a calibrated cosine distance threshold (~0.7).

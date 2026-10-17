@@ -64,7 +64,7 @@ def test_app_state_enum():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_app_logic.py -v`  
+Run: `rtk uv run pytest tests/test_app_logic.py -v`
 Expected: FAIL (`ModuleNotFoundError: No module named 'tscribe.app'`).
 
 - [ ] **Step 3: Add `rumps` to `pyproject.toml` and implement `src/tscribe/app.py` core logic**
@@ -169,7 +169,7 @@ class TscribeController:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_app_logic.py -v`  
+Run: `rtk uv run pytest tests/test_app_logic.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -219,7 +219,7 @@ def test_tscribe_app_timer_tick(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_app_ui.py -v`  
+Run: `rtk uv run pytest tests/test_app_ui.py -v`
 Expected: FAIL (`AttributeError: 'TscribeApp' not defined`).
 
 - [ ] **Step 3: Implement `TscribeApp` in `src/tscribe/app.py`**
@@ -353,7 +353,7 @@ class TscribeApp:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_app_ui.py -v`  
+Run: `rtk uv run pytest tests/test_app_ui.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -402,7 +402,7 @@ def test_cli_app_install_desktop(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `rtk uv run pytest tests/test_cli_app.py -v`  
+Run: `rtk uv run pytest tests/test_cli_app.py -v`
 Expected: FAIL (`No such command 'app'`).
 
 - [ ] **Step 3: Implement `app` command in `src/tscribe/cli.py`**
@@ -439,12 +439,12 @@ exec {sys.executable} -m tscribe.cli app
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `rtk uv run pytest tests/test_cli_app.py -v`  
+Run: `rtk uv run pytest tests/test_cli_app.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Full test suite verification**
 
-Run: `rtk uv run pytest -m "not slow"`  
+Run: `rtk uv run pytest -m "not slow"`
 Expected: All tests pass.
 
 - [ ] **Step 6: Commit**
