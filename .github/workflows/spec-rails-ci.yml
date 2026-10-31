@@ -1,0 +1,61 @@
+name: Spec-Rails Rails
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify-rails:
+    name: Verify Specs & Testing Rails
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Audit Spec-to-Code Mapping
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          # Chore lane (zero behavior change) is exempt from spec mapping; rails below still apply.
+          case "$HEAD_REF" in
+            chore/*) echo "Chore lane: spec-to-code audit skipped."; exit 0 ;;
+          esac
+
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -v -E '^(specs/|openspec/|docs/|\.github/|.*\.md$)' || true)
+          SPEC_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(openspec/(changes|specs)/|specs/bug-reports/)' || true)
+
+          if [ -n "$CODE_CHANGES" ] && [ -z "$SPEC_CHANGES" ]; then
+            echo "ERROR: Code modified without an openspec/ change or specs/bug-reports/ entry"
+            echo "Modified files:"
+            echo "$CODE_CHANGES"
+            exit 1
+          fi
+          echo "Spec-to-code audit passed."
+
+      - name: Gate & Lane Check
+        run: |
+          if [ -x openspec/spec-rails/spec-rails-check ]; then
+            npm install -g @fission-ai/openspec
+            sh openspec/spec-rails/spec-rails-check
+          fi
+
+      - name: Verify Test Rails
+        run: |
+          if [ -f openspec/spec-rails/spec-rails-verify ]; then
+            sh openspec/spec-rails/spec-rails-verify
+          fi
+
+      - name: Set up Pre-Commit
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files
+
+      - name: Run Test Suite
+        run: |
+          if [ -f Makefile ]; then
+            make test
+          fi

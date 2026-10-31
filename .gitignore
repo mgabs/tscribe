@@ -23,3 +23,5 @@ mutants/
 !packaging/macos/*.spec
 macos/.build/
 macos/.swiftpm/
+
+.worktrees/

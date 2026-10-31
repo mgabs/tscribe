@@ -1,0 +1,125 @@
+#!/usr/bin/env sh
+# spec-rails-check: lane + gate check for OpenSpec changes using the spec-rails schema.
+# Exit codes: 0 ok | 1 violation | 2 environment/parse error. Requires jq.
+# Branch guard: main/master fail; a detached HEAD (empty branch name) or a
+# non-git directory is allowed. Artifact presence comes from `openspec status --json`.
+
+# Prints ticked|unticked|missing for a file's "## Review Gate" section.
+# A box counts as ticked for "- [x]" and "- [X]". "missing" = no file or no
+# section or no checkbox line inside the section.
+gate_state() {
+  [ -f "$1" ] || { echo missing; return 0; }
+  awk '
+    /^## Review Gate[[:space:]]*$/ { sec = 1; next }
+    /^## / { sec = 0 }
+    sec && /^- \[[ xX]\]/ { box = 1; if ($0 ~ /^- \[[xX]\]/) ticked = 1 }
+    END { print (ticked ? "ticked" : (box ? "unticked" : "missing")) }
+  ' "$1"
+}
+
+gate_number() {
+  case "$1" in
+    research) echo 0 ;; proposal) echo 1 ;; specs) echo 2 ;;
+    design) echo 3 ;; tasks) echo 4 ;;
+  esac
+}
+
+# artifact_state <change_dir> <artifact>: aggregate gate state of an artifact's files.
+artifact_state() {
+  case "$2" in
+    specs)
+      _files=$(find "$1/specs" -name spec.md -type f 2>/dev/null | sort)
+      if [ -z "$_files" ]; then echo missing; return 0; fi
+      _agg=ticked
+      for _f in $_files; do
+        case "$(gate_state "$_f")" in
+          missing) echo missing; return 0 ;;
+          unticked) _agg=unticked ;;
+        esac
+      done
+      echo "$_agg"
+      ;;
+    research | proposal | design | tasks) gate_state "$1/$2.md" ;;
+    *) echo ticked ;;
+  esac
+}
+
+# violations <change> <status_json> <results>
+# results: lines "<artifact> <ticked|unticked|missing>". Prints one line per
+# gate that is not ticked while a downstream artifact is done.
+violations() {
+  printf '%s' "$2" | jq -r '
+    . as $s | $s.artifacts[] | select(.status == "done") | .id as $d
+    | .requires[] | . as $r
+    | select(any($s.artifacts[]; .id == $r and .status == "done"))
+    | "\($d) \($r)"' | while read -r _down _up; do
+    _res=$(printf '%s\n' "$3" | awk -v a="$_up" '$1 == a { print $2 }')
+    [ "$_res" = ticked ] && continue
+    _num=$(gate_number "$_up")
+    if [ "$_res" = unticked ]; then
+      echo "$1: Gate $_num ($_up) unticked but '$_down' exists"
+    else
+      echo "$1: Gate $_num ($_up) Review Gate section missing but '$_down' exists"
+    fi
+  done
+}
+
+main() {
+  set -u
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "spec-rails-check: jq is required but not found on PATH" >&2
+    return 2
+  fi
+  if ! command -v openspec >/dev/null 2>&1; then
+    echo "spec-rails-check: openspec is required but not found on PATH" >&2
+    return 2
+  fi
+
+  _branch=$(git branch --show-current 2>/dev/null || true)
+  case "$_branch" in
+    main | master)
+      echo "spec-rails-check: direct commits on '$_branch' are not allowed; use a feature branch" >&2
+      return 1
+      ;;
+  esac
+
+  _list=$(openspec list --json 2>&1) || {
+    echo "spec-rails-check: 'openspec list --json' failed: $_list" >&2
+    return 2
+  }
+  _names=$(printf '%s' "$_list" | jq -r '.changes[].name' 2>&1) || {
+    echo "spec-rails-check: cannot parse 'openspec list --json': $_names" >&2
+    return 2
+  }
+
+  _out=""
+  for _c in $_names; do
+    _status=$(openspec status --change "$_c" --json 2>&1) || {
+      echo "spec-rails-check: 'openspec status --change $_c --json' failed: $_status" >&2
+      return 2
+    }
+    _err=$(printf '%s' "$_status" | jq -e 'if (.artifacts | type) == "array" then true else error("status JSON has no artifacts array") end' 2>&1 >/dev/null) || {
+      echo "spec-rails-check: cannot parse status for '$_c': $_err" >&2
+      return 2
+    }
+    _results=""
+    for _id in $(printf '%s' "$_status" | jq -r '.artifacts[].id'); do
+      _results="$_results$_id $(artifact_state "openspec/changes/$_c" "$_id")
+"
+    done
+    _v=$(violations "$_c" "$_status" "$_results")
+    [ -n "$_v" ] && _out="$_out$_v
+"
+  done
+
+  if [ -n "$_out" ]; then
+    printf 'spec-rails-check: gate violations:\n%s' "$_out" >&2
+    return 1
+  fi
+  return 0
+}
+
+if [ "${SPEC_RAILS_SOURCE_ONLY:-}" != 1 ]; then
+  main "$@"
+  exit $?
+fi

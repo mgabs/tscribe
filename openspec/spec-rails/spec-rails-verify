@@ -1,0 +1,67 @@
+#!/usr/bin/env sh
+# CI-only verifier for the test rails (REQ-OSA-26, REQ-OSA-27, REQ-OSA-28).
+# Run from the repository root. Reads openspec/spec-rails/rails.conf (optional shell file).
+set -u
+
+CONF="openspec/spec-rails/rails.conf"
+RAILS_TEST_DIRS="tests"
+RAILS_TEST=""
+RAILS_COVERAGE=""
+RAILS_MUTATION=""
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && . "./$CONF"
+
+FAILED=0
+fail() { echo "FAIL: $1"; FAILED=1; }
+
+# Keys declared under ADDED/MODIFIED in a delta spec.
+delta_keys() {
+  awk '/^## / { on = ($0 ~ /^## (ADDED|MODIFIED) Requirements/); next }
+       on && /^### Requirement: (REQ|NFR)-[A-Za-z0-9]+-[0-9]+/ { print $3 }' "$1"
+}
+
+check_traceability() {
+  for spec in openspec/changes/*/specs/*/spec.md openspec/changes/*/specs/*/*/spec.md; do
+    [ -f "$spec" ] || continue
+    for key in $(delta_keys "$spec"); do
+      # shellcheck disable=SC2086
+      if grep -rqF -- "$key" $RAILS_TEST_DIRS 2>/dev/null; then
+        echo "ok: $key covered"
+      else
+        fail "$key ($spec) appears in no file under: $RAILS_TEST_DIRS"
+      fi
+    done
+  done
+}
+
+check_evidence() {
+  for tasks in openspec/changes/*/tasks.md; do
+    [ -f "$tasks" ] || continue
+    grep -nE '^- \[x\].*(Red|Green|Coverage|[Mm]utation)' "$tasks" | while IFS= read -r line; do
+      printf '%s\n' "$line" | grep -qE 'Evidence: *[^ ]' || echo "$tasks:$line"
+    done
+  done
+}
+
+run_cmd() {
+  name="$1"; cmd="$2"
+  if [ -z "$cmd" ]; then
+    echo "warning: $name is not defined in $CONF; skipped"
+    return 0
+  fi
+  echo "running $name: $cmd"
+  sh -c "$cmd" || { fail "$name exited non-zero"; return 1; }
+}
+
+check_traceability
+
+missing="$(check_evidence)"
+if [ -n "$missing" ]; then
+  fail "ticked task without 'Evidence:':"
+  echo "$missing"
+fi
+
+run_cmd RAILS_TEST "$RAILS_TEST" && run_cmd RAILS_COVERAGE "$RAILS_COVERAGE" && run_cmd RAILS_MUTATION "$RAILS_MUTATION"
+
+[ "$FAILED" -eq 0 ] && echo "spec-rails-verify: all checks passed"
+exit "$FAILED"
