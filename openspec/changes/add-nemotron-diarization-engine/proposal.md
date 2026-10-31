@@ -46,4 +46,4 @@ end-to-end model that may be more accurate, and config has no engine selection.
 - App bundle size increase is measured and recorded.
 
 ## Review Gate
-- [ ] **Gate 1 Approval**: Proposal reviewed and approved by human before drafting specs.
+- [x] **Gate 1 Approval**: Proposal reviewed and approved by human before drafting specs.
