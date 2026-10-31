@@ -56,4 +56,5 @@ on first use rather than bundling them.
 None. No specs exist in `openspec/specs/`. Config adds an optional key; default behaviour is unchanged.
 
 ## Review Gate
-- [ ] **Gate 0 Decision**: Human decides Go (name the option) or No-Go before the proposal is drafted.
+- [x] **Gate 0 Decision**: Human decides Go (name the option) or No-Go before the proposal is drafted.
+  Decision: **Go, Option A** (native runtime, in-process), recorded from the developer's explicit choice.
