@@ -68,4 +68,4 @@ flowchart LR
    has a `mutants/` setup to reuse.
 
 ## Review Gate
-- [ ] **Gate 3 Approval**: Architecture & design reviewed and approved by human before task breakdown.
+- [x] **Gate 3 Approval**: Architecture & design reviewed and approved by human before task breakdown.
