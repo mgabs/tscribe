@@ -2,7 +2,7 @@
 
 ## Intent
 Add NVIDIA Nemotron 3 Diarization as a selectable speaker-diarization engine, running natively in-process
-(research Option A), alongside the existing WeSpeaker pipeline, and package its runtime into the macOS app.
+(research Option A), as the default engine, with the existing WeSpeaker pipeline remaining selectable, and package its runtime into the macOS app.
 
 ## Problem Statement
 Diarization has a single fixed engine (VAD + WeSpeaker embeddings + clustering). Users cannot choose an
@@ -11,7 +11,7 @@ end-to-end model that may be more accurate, and config has no engine selection.
 ## Capabilities
 
 ### New Capabilities
-- `diarization-engine`: selectable diarization engine (`wespeaker` default, `nemotron`), shared
+- `diarization-engine`: selectable diarization engine (`nemotron` default, `wespeaker`), shared
   `diarize(path, num_speakers) -> list[SpeakerTurn]` contract, first-use model download, local-only audio.
 
 ### Modified Capabilities
@@ -20,7 +20,7 @@ end-to-end model that may be more accurate, and config has no engine selection.
 ## Scope
 
 ### In-Scope
-- `diarize_engine` config key and CLI option; default `wespeaker`, behaviour unchanged when unset.
+- `diarize_engine` config key and CLI option; default `nemotron`; `wespeaker` keeps today's behaviour when selected.
 - Engine interface extracted from `Diarizer`; `attribute_speakers` untouched.
 - Nemotron engine using its native runtime, weights downloaded on first use.
 - Packaging the Nemotron runtime into the self-contained macOS app build.
@@ -38,10 +38,11 @@ end-to-end model that may be more accurate, and config has no engine selection.
 - **ASM-GEN-2**: Its licence permits downloading and use in this app (unverified).
 - **ASM-GEN-3**: Its speaker limit may be below the WeSpeaker path; the engine must surface it, not hide it.
 - **ASM-GEN-4**: The extra runtime size is acceptable for the app bundle.
+- **ASM-GEN-5**: Making Nemotron the default is accepted despite the first-use weight download and heavier runtime; first diarization needs network access.
 
 ## Success Metrics
-- Default run is output-identical to today with no config change.
-- `diarize_engine = "nemotron"` produces `SpeakerTurn`s that pass the existing attribution tests.
+- `diarize_engine = "wespeaker"` is output-identical to today.
+- Default (`nemotron`) produces `SpeakerTurn`s that pass the existing attribution tests.
 - Packaged app runs the Nemotron engine end to end on a sample file.
 - App bundle size increase is measured and recorded.
 

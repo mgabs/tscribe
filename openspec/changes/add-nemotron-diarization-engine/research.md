@@ -18,7 +18,7 @@ Unknown: runtime/format (NeMo/PyTorch vs ONNX/CoreML), max speakers, licence/gat
 offline vs streaming, macOS/Apple Silicon support. If it is Sortformer-family, expect a ~4 speaker cap
 and a NeMo/PyTorch runtime. These must be confirmed before Go.
 
-**Constraints from the user:** engine is selectable (existing stays default); must be packaged into the app.
+**Constraints from the user:** engine is selectable (Nemotron default, per later developer decision; WeSpeaker remains selectable); must be packaged into the app.
 
 ## 2. Options Explored
 
@@ -48,12 +48,12 @@ from an existing export, run via onnxruntime/sherpa-onnx or CoreML.
 ## 4. Recommendation
 
 Go with the selectable-engine interface now (the shared part of A/B), and choose A vs B only once the
-model card confirms its runtime and an ONNX/CoreML path. Keep WeSpeaker as default; download Nemotron weights
+model card confirms its runtime and an ONNX/CoreML path. Keep WeSpeaker selectable (Nemotron is the default); download Nemotron weights
 on first use rather than bundling them.
 
 ## 5. Breaking Changes & Deprecations
 
-None. No specs exist in `openspec/specs/`. Config adds an optional key; default behaviour is unchanged.
+No specs exist in `openspec/specs/`. Behavioural break: the default engine changes from WeSpeaker to Nemotron (developer decision), so existing users get a first-use download and different output unless they set `diarize_engine = "wespeaker"`.
 
 ## Review Gate
 - [x] **Gate 0 Decision**: Human decides Go (name the option) or No-Go before the proposal is drafted.
