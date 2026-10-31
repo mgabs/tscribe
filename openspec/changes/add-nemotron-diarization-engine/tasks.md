@@ -61,4 +61,4 @@ Now (before Slice 1 lands), Slice 0 (human) runs in parallel with the Slice 1 BD
 - [ ] 8.1 Merge nemotron, packaging and docs streams, rebase on `master`, re-run `make check`, then `openspec archive`
 
 ## Review Gate
-- [ ] **Gate 4 Approval**: Tasks breakdown approved by human before writing test code.
+- [x] **Gate 4 Approval**: Tasks breakdown approved by human before writing test code.
