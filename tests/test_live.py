@@ -249,3 +249,101 @@ def test_caption_word_decoder_uses_vad_without_writing_exports():
         assert options['word_timestamps'] is True
         assert options['condition_on_previous_text'] is False
         export.assert_not_called()
+
+
+
+def test_caption_history_can_resume_for_final_window(tmp_path):
+    path = tmp_path / 'meeting.wav'
+    draft = CaptionDraft()
+    words = [word(' Earlier', 1, 2)]
+    draft.update(words, 0, 4, 0)
+    draft.update(words, 0, 7, 1)
+    draft.save(path)
+    resumed = CaptionDraft.load(path)
+    result = resumed.update([word(' Last', 39, 40), word(' words', 40, 41)], 35, 42, 2, final=True)
+    resumed.save(path)
+    assert result['text'] == 'Earlier'
+    assert result['provisional_text'] == 'Last words'
+    assert result['finished'] is True
+    saved = json.loads(path.with_suffix('.captions.json').read_text())
+    assert saved['audio_end'] == 42
+    assert saved['sequence'] == 2
+    assert path.with_suffix('.captions.txt').read_text() == 'Earlier Last words'
+
+
+def test_final_window_creates_draft_before_first_caption_tick_and_without_final_transcription():
+    from pathlib import Path
+    worker = Worker(lambda _: None)
+    worker.handle({'id': 'settings', 'command': 'save-config', 'changes': {'recording.auto_transcribe': False}})
+    prepared = worker.handle({'id': 'prepare', 'command': 'prepare-recording'})
+    path, stem = Path(prepared['wav_path']), prepared['stem']
+    wav(path, [0] * 32000)
+    wav(path.parent / '.live' / stem / '0-microphone.wav', [0] * 32000)
+    with patch('tscribe.transcriber.Transcriber') as model:
+        model.return_value.transcribe_words.return_value = [word(' Last', 0, 1), word(' words', 1, 2)]
+        captions = worker.handle({'id': 'caption', 'command': 'live-caption', 'stem': stem, 'sequence': 0, 'tracks': {'microphone': 0}, 'final': True})
+        result = worker.handle({'id': 'finish', 'command': 'finish-recording', 'stem': stem})
+        model.return_value.transcribe.assert_not_called()
+    assert captions['finished'] is True
+    assert captions['audio_end'] == 2
+    assert 'Last words' in result['text']
+    assert result['sessions'][0]['transcribed'] is False
+    assert not path.with_suffix('.json').exists()
+
+
+def test_restarted_worker_final_window_retains_earlier_confirmed_text():
+    from pathlib import Path
+    worker = Worker(lambda _: None)
+    prepared = worker.handle({'id': 'prepare', 'command': 'prepare-recording'})
+    path, stem = Path(prepared['wav_path']), prepared['stem']
+    draft = CaptionDraft()
+    for sequence in range(2):
+        draft.update([word(' Earlier', 0, 1)], 0, 3, sequence)
+    draft.save(path)
+    wav(path.parent / '.live' / stem / '2-microphone.wav', [0] * 32000)
+    with patch('tscribe.transcriber.Transcriber') as model:
+        model.return_value.transcribe_words.return_value = [word(' Goodbye', 1, 2)]
+        result = worker.handle({'id': 'final', 'command': 'live-caption', 'stem': stem, 'sequence': 2, 'tracks': {'microphone': 40}, 'final': True})
+    assert result['text'] == 'Earlier'
+    assert result['provisional_text'] == 'Goodbye'
+    assert result['finished'] is True
+    assert path.with_suffix('.captions.txt').read_text() == 'Earlier Goodbye'
+
+
+def test_corrupt_caption_history_is_not_overwritten_by_final_pass(tmp_path):
+    path = tmp_path / 'meeting.wav'
+    saved = path.with_suffix('.captions.json')
+    saved.write_text('{"confirmed": "invalid"}')
+    with pytest.raises(ValueError, match='saved caption'):
+        CaptionDraft.load(path)
+    assert saved.read_text() == '{"confirmed": "invalid"}'
+
+
+@pytest.mark.slow
+def test_real_speech_final_window_without_periodic_ticks_or_full_transcription(monkeypatch):
+    import os
+    from pathlib import Path
+    from tscribe.transcriber import ensure_av_compatibility
+    from faster_whisper.audio import decode_audio
+
+    fixture = os.environ.get('TSCRIBE_LIVE_TEST_AUDIO')
+    if not fixture:
+        pytest.skip('Set TSCRIBE_LIVE_TEST_AUDIO to a speech audio file')
+    monkeypatch.setenv('HF_HUB_OFFLINE', '1')
+    ensure_av_compatibility()
+    samples = decode_audio(fixture, sampling_rate=16000)
+    assert len(samples) < 16000 * 30, 'Use a fixture under 30 seconds for this stop-before-first-tick check'
+    worker = Worker(lambda _: None)
+    model = os.environ.get('TSCRIBE_LIVE_TEST_MODEL', 'small')
+    worker.handle({'id': 'config', 'command': 'save-config', 'changes': {'captions.model': model, 'recording.auto_transcribe': False, 'transcription.language': 'en'}})
+    prepared = worker.handle({'id': 'prepare', 'command': 'prepare-recording'})
+    path, stem = Path(prepared['wav_path']), prepared['stem']
+    wav(path, samples * 32767)
+    wav(path.parent / '.live' / stem / '0-microphone.wav', samples * 32767)
+    result = worker.handle({'id': 'final', 'command': 'live-caption', 'stem': stem, 'sequence': 0, 'tracks': {'microphone': 0}, 'final': True})
+    assert result['finished'] is True
+    assert result['provisional_text']
+    assert result['audio_end'] == pytest.approx(len(samples) / 16000)
+    saved = worker.handle({'id': 'finish', 'command': 'finish-recording', 'stem': stem})
+    assert result['provisional_text'] in saved['text']
+    assert not path.with_suffix('.json').exists()

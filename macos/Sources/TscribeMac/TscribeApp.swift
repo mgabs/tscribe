@@ -150,6 +150,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         smokeTimer?.invalidate()
         var result: [String: Any] = ["window_visible": visible, "worker_ready": ready, "native_ui": true, "error": model.error ?? "", "status_item_visible": statusController?.isReachable == true, "status_item": statusController?.diagnostics ?? [:]]
         Task { @MainActor in
+            // Opt-in hardware validation: playback is driven externally so that
+            // ScreenCaptureKit includes it, with a fixed capture deadline here.
+            if CommandLine.arguments.contains("--smoke-recording") {
+                @MainActor func writeReport(_ phase: String) {
+                    result["phase"] = phase
+                    result["error"] = self.model.error ?? ""
+                    result["message"] = self.model.message
+                    result["recordings_path"] = self.model.recordingsPath
+                    result["session"] = self.model.selected ?? ""
+                    if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted]) {
+                        try? data.write(to: URL(fileURLWithPath: report), options: .atomic)
+                    }
+                }
+                guard ready else { writeReport("failed"); self.model.quit(); return }
+                writeReport("preparing")
+                await self.model.startMeeting()
+                guard self.model.phase == "recording" else { writeReport("failed"); self.model.quit(); return }
+                writeReport("recording")
+                try? await Task.sleep(nanoseconds: 20_000_000_000)
+                await self.model.stopRecording()
+                writeReport(self.model.error == nil ? "finished" : "failed")
+                self.model.quit()
+                return
+            }
             let originalStatusItem = self.statusController
             if ProcessInfo.processInfo.arguments.contains("--smoke-menu-bar"), let window = mainWindows.first {
                 result["menu_opens"] = self.statusController?.checkMenuOpens() == true

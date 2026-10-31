@@ -51,6 +51,14 @@ beside it. `TSCRIBE_APP_PATH` can select a native app at another location.
 - **Stop** finalizes the WAV, saves session metadata, and transcribes if enabled.
 - Quitting during recording/transcription finishes the active job before exiting.
 
+For an explicitly supervised hardware test, launch an isolated app/config with
+`--smoke-report /absolute/path/report.json --smoke-recording`. It records the
+configured meeting sources for 20 seconds, finishes captions, writes the result,
+and quits. The report changes from `preparing` to `recording` before external
+test playback should start. This mode requests real macOS capture permissions;
+use a separate data directory and disable automatic full transcription for a
+short test. It never starts playback itself.
+
 The app uses `recording.default_device` for the microphone: leave it empty for
 the system default, or specify a native device name/unique ID. PortAudio numeric
 device indexes from the Python CLI are not native device IDs. Audio is converted
@@ -106,9 +114,18 @@ phrase stays provisional. VAD filters silence. If processing loses coverage, the
 window reports missed captions while full audio capture continues independently.
 Caption failures do not stop recording.
 
-**Stop** preserves the latest draft as `STEM.captions.txt` and
-`STEM.captions.json`, including provisional words and gap information. The draft
-can miss the last few seconds or audio lost while inference was behind. With
+**Stop** first closes audio capture, including the sample-rate converter’s final
+samples, then processes a final caption window before saving the recording.
+Caption finishing waits at most 15 seconds; **Skip Captions** skips that wait
+without discarding audio. Short recordings stopped before the first caption tick
+also receive a final pass. A restarted caption worker reloads saved draft history.
+
+Drafts are saved as `STEM.captions.txt` and `STEM.captions.json`, including
+provisional words and gap information. JSON records `finished = true` and the last
+processed `audio_end` after a successful final pass. This is still a draft;
+recognition errors and earlier processing gaps may remain. If finishing is
+skipped, times out, or fails, the app retains the last draft, saves the complete
+audio, and reports that the draft may be incomplete. With
 `recording.auto_transcribe = true`, normal full-recording transcription follows
 and replaces the preview with the final transcript. With it disabled, the draft
 remains available in the app; select **Transcribe** later for a final version.

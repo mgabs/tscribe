@@ -132,6 +132,9 @@ class Worker:
         sequence = request.get('sequence')
         if type(sequence) is not int or sequence < 0:
             raise ValueError('Caption sequence must be a nonnegative integer')
+        final = request.get('final', False)
+        if type(final) is not bool:
+            raise ValueError('Caption final flag must be a boolean')
         offsets = request.get('tracks')
         if not isinstance(offsets, dict) or not offsets or set(offsets) - {'microphone', 'system'}:
             raise ValueError('Caption tracks must be microphone and/or system')
@@ -162,8 +165,8 @@ class Worker:
             word['end'] += start
         if self._caption_stem != stem:
             self._caption_stem = stem
-            self._caption_draft = CaptionDraft()
-        result = self._caption_draft.update(words, start, end, sequence)
+            self._caption_draft = CaptionDraft.load(path) if final else CaptionDraft()
+        result = self._caption_draft.update(words, start, end, sequence, final=final)
         self._caption_draft.save(path)
         return {**result, 'echo_active': use_echo, 'warning': warning}
 

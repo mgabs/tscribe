@@ -87,6 +87,10 @@ final class PCMWriter {
             return input
         }
         if status == .error { throw error ?? AppFailure(message: "Audio conversion failed.") as NSError }
+        try write(output)
+    }
+
+    private func write(_ output: AVAudioPCMBuffer) throws {
         if output.frameLength > 0 {
             if file == nil { file = try AVAudioFile(forWriting: url, settings: target.settings, commonFormat: .pcmFormatInt16, interleaved: true) }
             try file?.write(from: output)
@@ -140,8 +144,7 @@ final class PCMWriter {
                     let remaining = max(0, AVAudioFramePosition((inputDuration * target.sampleRate).rounded()) - frames)
                     output.frameLength = min(output.frameLength, AVAudioFrameCount(remaining))
                     if output.frameLength > 0 {
-                        try file?.write(from: output)
-                        frames += AVAudioFramePosition(output.frameLength)
+                        try write(output)
                     }
                     if status == .endOfStream || output.frameLength == 0 { break }
                 }
@@ -156,8 +159,16 @@ final class PCMWriter {
     }
 }
 
+struct CaptionSnapshot {
+    let directory: URL
+    let sequence: Int
+    let sessionID: UUID
+}
+
 struct CaptureSummary {
     let offsets: [String: Double]
+    let captionTracks: [String: Double]
+    let captionWarning: String?
 }
 
 // Capture lifecycle is serialized by AppModel; sample callbacks, snapshots, and
@@ -254,7 +265,7 @@ final class NativeAudioCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDe
         }
     }
 
-    func stop() async throws -> CaptureSummary {
+    func stop(finalSnapshot: CaptionSnapshot? = nil) async throws -> CaptureSummary {
         var stoppingError: Error?
         if let system {
             do { try await system.stopCapture() } catch { stoppingError = error }
@@ -279,9 +290,24 @@ final class NativeAudioCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDe
         if !writers.contains(where: { $0.1?.hasAudio == true }), stoppingError == nil {
             stoppingError = AppFailure(message: "No audio was captured. Check permissions and selected devices.")
         }
+        var captionTracks: [String: Double] = [:]
+        var captionWarning: String?
+        if let finalSnapshot, stoppingError == nil {
+            do {
+                captionTracks = try sampleQueue.sync {
+                    try FileManager.default.createDirectory(at: finalSnapshot.directory, withIntermediateDirectories: true)
+                    var tracks: [String: Double] = [:]
+                    for (source, writer) in writers {
+                        let url = finalSnapshot.directory.appendingPathComponent("\(finalSnapshot.sequence)-\(source).wav")
+                        if let offset = try writer?.snapshot(to: url) { tracks[source] = offset }
+                    }
+                    return tracks
+                }
+            } catch { captionWarning = "The final caption snapshot could not be saved: \(error.localizedDescription). Audio is preserved." }
+        }
         sampleQueue.sync { microphoneWriter = nil; systemWriter = nil }
         if let stoppingError { throw stoppingError }
-        return CaptureSummary(offsets: offsets)
+        return CaptureSummary(offsets: offsets, captionTracks: captionTracks, captionWarning: captionWarning)
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {

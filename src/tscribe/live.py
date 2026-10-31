@@ -124,15 +124,40 @@ class CaptionDraft:
         self.sequence = -1
         self.last_end = 0.0
         self.gaps = []
+        self.finished = False
 
     @staticmethod
     def token(word):
         return word['text'].strip().casefold().strip('.,!?;:')
 
-    def update(self, words, start, end, sequence):
+    @classmethod
+    def load(cls, path):
+        draft = cls()
+        saved = path.with_suffix('.captions.json')
+        if not saved.is_file():
+            return draft
+        data = json.loads(saved.read_text(encoding='utf-8'))
+        for key in ('confirmed', 'provisional', 'unconfirmed_before_gaps'):
+            if not isinstance(data.get(key, []), list):
+                raise ValueError('Invalid saved caption draft')
+            for word in data.get(key, []):
+                if not isinstance(word, dict) or not isinstance(word.get('text'), str):
+                    raise ValueError('Invalid saved caption words')
+                if not all(type(word.get(part)) in (int, float) and np.isfinite(word[part]) for part in ('start', 'end')):
+                    raise ValueError('Invalid saved caption timestamps')
+        draft.confirmed = data.get('confirmed', [])
+        draft.pending = data.get('provisional', [])
+        draft.unconfirmed = data.get('unconfirmed_before_gaps', [])
+        draft.last_end = float(data.get('audio_end', 0))
+        draft.sequence = int(data.get('sequence', -1))
+        draft.gaps = data.get('gaps', [])
+        return draft
+
+    def update(self, words, start, end, sequence, final=False):
         if sequence <= self.sequence:
             raise ValueError('Caption windows must arrive in order')
         self.sequence = sequence
+        self.finished = final
         if start > self.last_end + 0.5:
             # Retain the last hypothesis before its audio leaves the rolling window.
             self.unconfirmed.extend(self.pending)
@@ -178,6 +203,7 @@ class CaptionDraft:
             'text': ''.join(word['text'] for word in self.confirmed).strip(),
             'provisional_text': ''.join(word['text'] for word in self.pending).strip(),
             'audio_end': self.last_end, 'gaps': self.gaps,
+            'sequence': self.sequence, 'finished': self.finished,
         }
 
     def save(self, path):

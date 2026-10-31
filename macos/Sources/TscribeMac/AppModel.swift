@@ -133,13 +133,21 @@ final class AppModel: ObservableObject {
     func stopRecording() async {
         guard phase == "recording", let stem = activeStem else { return }
         phase = "saving"; message = "Saving recording…"
-        liveCaptions.stop()
+        let finalSnapshot = liveCaptions.prepareStop()
         do {
-            let summary = try await capture.stop()
+            let summary = try await capture.stop(finalSnapshot: finalSnapshot)
+            var captionWarning = summary.captionWarning
+            if let finalSnapshot, captionWarning == nil {
+                message = "Finishing live captions… Audio is saved."
+                captionWarning = await liveCaptions.flushFinal(finalSnapshot, tracks: summary.captionTracks)
+            } else if captionWarning != nil { liveCaptions.stop() }
+            message = "Saving recording…"
             let source = recordingSource == "both" ? "meeting" : (recordingSource == "system" ? "loopback" : "microphone")
-            let result = try await worker.request("finish-recording", values: ["stem": stem, "source": source, "device": "macOS native audio", "diarize": diarize, "track_offsets": summary.offsets])
+            var result = try await worker.request("finish-recording", values: ["stem": stem, "source": source, "device": "macOS native audio", "diarize": diarize, "track_offsets": summary.offsets])
+            let warnings = [result["warning"] as? String, captionWarning].compactMap { $0 }.filter { !$0.isEmpty }
+            result["warning"] = warnings.joined(separator: " ")
             complete(result, stem: stem)
-        } catch { fail(error) }
+        } catch { liveCaptions.stop(); fail(error) }
     }
 
     func transcribeSelected() async {

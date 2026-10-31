@@ -33,4 +33,5 @@
 - [x] Save the caption draft and produce a final transcript after recording stops.
 - [ ] Benchmark caption delay, quality, CPU, memory, and power on representative meetings.
 - [ ] Add CLI live recording/caption streaming.
-- [ ] Validate combined capture on real calls and improve stop-time draft coverage.
+- [x] Flush the final caption window after capture closes, with a bounded wait and skip action.
+- [ ] Validate combined capture on real calls.
