@@ -27,6 +27,11 @@ def native_build(tmp_path, monkeypatch):
     worker = tmp_path / 'build/worker-dist/tscribe-worker'
     worker.mkdir(parents=True)
     (worker / 'tscribe-worker').write_text('new worker')
+    nemotron = worker / '_internal/nemotron'
+    (nemotron / 'bin').mkdir(parents=True)
+    (nemotron / 'bin/nemo-speech').write_text('runtime')
+    (nemotron / 'lib').mkdir()
+    (nemotron / 'lib/libggml.0.dylib').write_text('library')
     resources = tmp_path / 'resources'
     resources.mkdir()
     (resources / 'AppIcon.icns').write_bytes(b'icon')

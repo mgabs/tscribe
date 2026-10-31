@@ -40,6 +40,7 @@ class TranscriptionDefaults:
     output_formats: list[str] = field(default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS))
     gpu: bool = False
     diarize: bool = False
+    diarize_engine: str = "nemotron"
 
 
 @dataclass
@@ -172,6 +173,8 @@ def _validate_value(key: str, value: Any) -> None:
         for fmt in value:
             if fmt not in VALID_OUTPUT_FORMATS:
                 raise ValueError(f"Invalid output format: {fmt!r}. Choose from: {', '.join(VALID_OUTPUT_FORMATS)}")
+    if key == "transcription.diarize_engine" and value not in ("nemotron", "wespeaker"):
+        raise ValueError(f"Invalid diarization engine: {value!r}. Choose from: nemotron, wespeaker")
     if key == "recording.sample_rate" and value <= 0:
         raise ValueError(f"sample_rate must be positive, got {value}")
     if key == "recording.channels" and value <= 0:

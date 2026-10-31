@@ -288,3 +288,15 @@ def test_echo_preference_roundtrip(tmp_path, value):
     config.set('captions.echo_cancellation', value)
     config.save(tmp_path / 'config.toml')
     assert TscribeConfig.load(tmp_path / 'config.toml').captions.echo_cancellation is (value == 'true')
+
+
+def test_diarize_engine_config_default_and_validation():
+    import pytest
+    from tscribe.config import TscribeConfig
+
+    config = TscribeConfig()
+    assert config.transcription.diarize_engine == 'nemotron'
+    config.set('transcription.diarize_engine', 'wespeaker')
+    assert config.get('transcription.diarize_engine') == 'wespeaker'
+    with pytest.raises(ValueError, match='nemotron.*wespeaker'):
+        config.set('transcription.diarize_engine', 'bogus')

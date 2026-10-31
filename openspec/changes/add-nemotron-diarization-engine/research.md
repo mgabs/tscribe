@@ -48,8 +48,7 @@ from an existing export, run via onnxruntime/sherpa-onnx or CoreML.
 ## 4. Recommendation
 
 Go with the selectable-engine interface now (the shared part of A/B), and choose A vs B only once the
-model card confirms its runtime and an ONNX/CoreML path. Keep WeSpeaker selectable (Nemotron is the default); download Nemotron weights
-on first use rather than bundling them.
+model card confirms its runtime and an ONNX/CoreML path. Keep WeSpeaker selectable (Nemotron is the default); bundle the Nemotron weights in the packaged app (developer decision), downloading on first use only in development.
 
 ## 5. Breaking Changes & Deprecations
 

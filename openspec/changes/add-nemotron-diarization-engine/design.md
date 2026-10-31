@@ -6,12 +6,12 @@ Extract the diarization engine behind a small protocol, keep today's pipeline as
 
 Invariants:
 - `attribute_speakers` and `SpeakerTurn` are unchanged (REQ-DIAR-2).
-- Audio never leaves the machine; only weights are downloaded (REQ-DIAR-3/7).
+- Audio never leaves the machine; weights ship in the app, downloaded only in dev (REQ-DIAR-3/7).
 - No silent engine fallback; unavailable runtime/weights raise (REQ-DIAR-5).
 - The Nemotron runtime is imported lazily, only by `NemotronEngine` (NFR-DIAR-1).
 
 Unverified (model card unreadable): Nemotron runtime/API, speaker cap, weight size, licence. Items marked
-**TBD-model** below MUST be confirmed before tasks are executed.
+**Resolved** below MUST be confirmed before tasks are executed.
 
 ## 2. Domain Models, State & Interface Contracts
 ```python
@@ -22,7 +22,7 @@ def make_engine(name: str, models_dir: Path | None = None) -> DiarizationEngine
 # name in {"nemotron", "wespeaker"}; otherwise ValueError listing valid names (REQ-DIAR-1)
 ```
 - `Diarizer` (current class) becomes `WeSpeakerEngine`; `Diarizer` remains as an alias so existing callers/tests keep working.
-- `NemotronEngine.max_speakers: int` (**TBD-model**); `diarize` raises `ValueError` naming the cap when
+- `NemotronEngine.max_speakers: int` (**Resolved**); `diarize` raises `ValueError` naming the cap when
   `num_speakers` exceeds it (REQ-DIAR-6).
 - Config: `TranscriptionConfig.diarize_engine: str = "nemotron"`; CLI `--diarize-engine [nemotron|wespeaker]`
   on `record`, `transcribe`, and `app`; config key `diarize_engine` in `config.example.toml`.
@@ -52,9 +52,15 @@ flowchart LR
 - **Concurrency, Latency & Resource Budgets**: diarization stays synchronous per file, as today. Weights download once
   (REQ-DIAR-3), atomically via temp dir so no partial file remains. NFR-DIAR-1: WeSpeaker path never imports the Nemotron
   runtime. NFR-DIAR-2: record packaged-app size with and without the runtime; no numeric budget until measured.
-- **Packaging (REQ-DIAR-4)**: add the Nemotron runtime to the Python deps used by the app build (`Makefile` app target /
-  `pyproject.toml`). **TBD-model**: dependency set and whether it supports Apple Silicon (MPS/CPU) in a self-contained bundle.
-  Weights are not bundled.
+- **Packaging (REQ-DIAR-4)**: the runtime is NVIDIA's native NeMo-Speech.cpp CLI (`nemo-speech`, ggml; no PyTorch/NeMo), pinned
+  to v0.3.0 (arm64 Metal / x86_64 CPU archives) with `Nemotron-3-Diarization.q8_0.gguf`, both SHA-256-verified by
+  `packaging/macos/fetch_nemotron.py` into `build/nemotron/` (run from `build_native.py`). `worker.spec` ships that tree as
+  `datas` at `Worker/_internal/nemotron/{bin,lib,*.gguf}` (the binary's rpath is `@loader_path/../lib`, so layout is kept);
+  `build_native.py` codesigns its Mach-O files. The engine runs `nemo-speech diarize <wav> --model <gguf> --format json`
+  as a subprocess (offline; max 8 speakers, so REQ-DIAR-6 cap = 8). Outside the app (dev) the weights are downloaded on
+  first use via the shared download helper and the runtime is found on `PATH`.
+- **Bundle size (NFR-DIAR-2)**: the Nemotron tree is 121 MB (runtime ~14 MB + weights 107 MB); `dist/tscribe.app` is
+  395 MiB with it, about 274 MiB without.
 - **Migration**: default flips to Nemotron; users keep old output with `diarize_engine = "wespeaker"`.
 
 ## 5. Testing Strategy

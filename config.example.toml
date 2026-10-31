@@ -15,6 +15,7 @@ language = "auto"
 output_formats = ["txt", "json"] # Also supports "srt" and "vtt".
 gpu = false # CUDA acceleration; keep false on macOS.
 diarize = false
+diarize_engine = "nemotron"  # "nemotron" or "wespeaker"
 
 [storage]
 data_dir = "" # Empty uses ~/.tscribe; supports paths such as ~/Recordings/tscribe.

@@ -40,8 +40,8 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.mutmut]
 source_paths = ["src/"]
-only_mutate = ["src/tscribe/config.py", "src/tscribe/paths.py"]
-pytest_add_cli_args_test_selection = ["tests/test_config.py", "tests/test_paths.py"]
+only_mutate = ["src/tscribe/config.py", "src/tscribe/paths.py", "src/tscribe/diarization_nemotron.py"]
+pytest_add_cli_args_test_selection = ["tests/test_config.py", "tests/test_paths.py", "tests/test_diarization_nemotron.py"]
 use_setproctitle = false
 
 [dependency-groups]

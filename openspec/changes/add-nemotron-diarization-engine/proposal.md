@@ -12,7 +12,7 @@ end-to-end model that may be more accurate, and config has no engine selection.
 
 ### New Capabilities
 - `diarization-engine`: selectable diarization engine (`nemotron` default, `wespeaker`), shared
-  `diarize(path, num_speakers) -> list[SpeakerTurn]` contract, first-use model download, local-only audio.
+  `diarize(path, num_speakers) -> list[SpeakerTurn]` contract, bundled weights (dev-only download), local-only audio.
 
 ### Modified Capabilities
 - None (`openspec/specs/` is empty).
@@ -22,23 +22,22 @@ end-to-end model that may be more accurate, and config has no engine selection.
 ### In-Scope
 - `diarize_engine` config key and CLI option; default `nemotron`; `wespeaker` keeps today's behaviour when selected.
 - Engine interface extracted from `Diarizer`; `attribute_speakers` untouched.
-- Nemotron engine using its native runtime, weights downloaded on first use.
-- Packaging the Nemotron runtime into the self-contained macOS app build.
+- Nemotron engine using its native runtime; weights bundled in the packaged app (downloaded on first use only in development).
+- Packaging the Nemotron runtime and weights into the self-contained macOS app build.
 - Clear error when the engine, runtime or weights are unavailable (no silent fallback).
 
 ### Out-of-Scope (YAGNI)
 - ONNX/CoreML conversion of the model (Option B).
-- Bundling model weights inside the app.
 - Streaming/live-caption diarization.
 - Fine-tuning, new speaker-labelling UI, or changes to `attribute_speakers`.
 - Engines beyond `wespeaker` and `nemotron`.
 
 ## Assumptions
-- **ASM-GEN-1**: Nemotron 3 Diarization is usable via a Python runtime on macOS (unverified; model card unreadable).
-- **ASM-GEN-2**: Its licence permits downloading and use in this app (unverified).
-- **ASM-GEN-3**: Its speaker limit may be below the WeSpeaker path; the engine must surface it, not hide it.
-- **ASM-GEN-4**: The extra runtime size is acceptable for the app bundle.
-- **ASM-GEN-5**: Making Nemotron the default is accepted despite the first-use weight download and heavier runtime; first diarization needs network access.
+- **ASM-GEN-1**: Nemotron 3 Diarization is usable on macOS via NVIDIA's native NeMo-Speech.cpp runtime and a GGUF checkpoint (verified: runs offline from the app bundle).
+- **ASM-GEN-2**: Its licence permits downloading, use and redistribution (bundling) in this app (confirmed by developer: free to distribute).
+- **ASM-GEN-3**: Its speaker limit (8) may be below the WeSpeaker path; the engine must surface it, not hide it.
+- **ASM-GEN-4**: The extra runtime and weights size is acceptable for the app bundle.
+- **ASM-GEN-5**: Making Nemotron the default is accepted despite the heavier runtime and larger bundle; the packaged app needs no network for diarization.
 
 ## Success Metrics
 - `diarize_engine = "wespeaker"` is output-identical to today.

@@ -19,6 +19,7 @@ def test_cli_app_non_darwin_raises():
     ([], []),
     (['--diarize'], ['--args', '--diarize']),
     (['--no-diarize'], ['--args', '--no-diarize']),
+    (['--diarize-engine', 'wespeaker'], ['--args', '--diarize-engine', 'wespeaker']),
 ])
 def test_cli_opens_native_app(tmp_path, options, forwarded):
     bundle = tmp_path / 'tscribe.app'

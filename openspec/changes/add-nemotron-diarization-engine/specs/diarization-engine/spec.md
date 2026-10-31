@@ -27,23 +27,31 @@ Every engine MUST implement `diarize(audio_path, num_speakers) -> list[SpeakerTu
 - **WHEN** either engine returns turns for the same audio
 - **THEN** `attribute_speakers` labels transcript segments from them with no code path depending on the engine
 
-### Requirement: REQ-DIAR-3 Nemotron weights on first use
-The Nemotron engine MUST download its model weights on first use into the diarization models directory, and MUST NOT require weights to be bundled in the app.
+### Requirement: REQ-DIAR-3 Nemotron weights bundled in the app
+The packaged macOS app MUST include the Nemotron model weights, and the Nemotron engine MUST load them from the app bundle without any download. When running outside the packaged app (development), the engine MUST download the weights on first use into the diarization models directory.
 
-#### Scenario: First run
-- **WHEN** Nemotron is selected and weights are absent
+#### Scenario: Packaged first run offline
+- **WHEN** the packaged app runs Nemotron for the first time with no network
+- **THEN** diarization completes using the bundled weights
+
+#### Scenario: Development first run
+- **WHEN** Nemotron is selected outside the packaged app and weights are absent
 - **THEN** they are downloaded once and reused on later runs
 
 #### Scenario: Download failure
-- **WHEN** the download fails or the file is empty or invalid
+- **WHEN** a development-mode download fails or the file is empty or invalid
 - **THEN** a clear error is raised, no partial file remains at the final path, and no other engine is substituted
 
+#### Scenario: Bundled weights missing or corrupt
+- **WHEN** the packaged app's bundled weights are absent or invalid
+- **THEN** a clear error is raised and no other engine is substituted
+
 ### Requirement: REQ-DIAR-4 Packaged macOS app support
-The packaged macOS app MUST include the runtime needed to run the Nemotron engine.
+The packaged macOS app MUST include the runtime and the model weights needed to run the Nemotron engine.
 
 #### Scenario: Packaged run
 - **WHEN** the packaged app is used with `diarize_engine = "nemotron"` on a sample recording
-- **THEN** speaker turns are produced without a separately installed runtime
+- **THEN** speaker turns are produced without a separately installed runtime and without downloading weights
 
 ### Requirement: REQ-DIAR-5 Unavailable engine fails loudly
 If the selected engine's runtime or weights are unavailable, the system MUST fail with an actionable error and MUST NOT silently fall back to another engine.
@@ -62,8 +70,8 @@ If the selected engine supports fewer speakers than requested or detected, the s
 ### Requirement: REQ-DIAR-7 Local audio
 Both engines MUST process audio locally; audio SHALL NOT be sent to any remote service.
 
-#### Scenario: Offline after download
-- **WHEN** weights are already cached and the network is unavailable
+#### Scenario: Offline with weights present
+- **WHEN** weights are bundled or already cached and the network is unavailable
 - **THEN** diarization still completes
 
 ### Requirement: NFR-DIAR-1 WeSpeaker path isolated
@@ -74,10 +82,10 @@ Running the WeSpeaker engine MUST NOT import the Nemotron runtime.
 - **THEN** the Nemotron runtime is not loaded
 
 ### Requirement: NFR-DIAR-2 Bundle size recorded
-The app bundle size increase caused by the Nemotron runtime MUST be measured and recorded in the change before release. (ASM-GEN-4; no numeric budget is set until measured.)
+The app bundle size increase caused by the Nemotron runtime and weights MUST be measured and recorded in the change before release. (ASM-GEN-4; no numeric budget is set until measured.)
 
 #### Scenario: Size check
-- **WHEN** the app is packaged with and without the Nemotron runtime
+- **WHEN** the app is packaged with and without the Nemotron runtime and weights
 - **THEN** the difference is recorded in the design or release notes
 
 ## Review Gate

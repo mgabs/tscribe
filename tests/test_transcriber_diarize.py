@@ -24,7 +24,7 @@ def test_transcriber_diarize_flow(tmp_path):
     with patch("tscribe.diarization.Diarizer.diarize", return_value=mock_turns) as mock_diarize:
         res = transcriber.transcribe(
             audio_file,
-            diarize=True,
+            diarize=True, diarize_engine="wespeaker",
             num_speakers=2,
             names="Alice",
             output_formats=[],
@@ -73,7 +73,7 @@ def test_transcriber_splits_speaker_handover_and_exports_it(tmp_path):
     transcriber._model.transcribe.return_value = ([segment], SimpleNamespace(duration=3, language='en'))
     turns = [SpeakerTurn(i, i+1, f'Speaker {i+1}') for i in range(3)]
     with patch('tscribe.diarization.Diarizer.diarize', return_value=turns):
-        result = transcriber.transcribe(audio_file, diarize=True, num_speakers=3)
+        result = transcriber.transcribe(audio_file, diarize=True, diarize_engine="wespeaker", num_speakers=3)
     transcriber._model.transcribe.assert_called_once_with(str(audio_file), language=None, word_timestamps=True)
     assert [part.speaker for part in result.segments] == ['Speaker 1', 'Speaker 2', 'Speaker 3']
     assert '[Speaker 2]:\nSecond.' in audio_file.with_suffix('.txt').read_text()
