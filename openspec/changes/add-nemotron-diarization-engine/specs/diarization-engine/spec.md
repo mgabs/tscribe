@@ -81,4 +81,4 @@ The app bundle size increase caused by the Nemotron runtime MUST be measured and
 - **THEN** the difference is recorded in the design or release notes
 
 ## Review Gate
-- [ ] **Gate 2 Approval**: Specifications reviewed and approved by human before technical design.
+- [x] **Gate 2 Approval**: Specifications reviewed and approved by human before technical design.
