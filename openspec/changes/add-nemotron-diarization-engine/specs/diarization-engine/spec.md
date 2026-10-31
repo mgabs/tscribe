@@ -1,20 +1,20 @@
 # Spec Delta
 
 ## Purpose
-Defines selectable speaker-diarization engines behind one contract, so users can choose between the default WeSpeaker pipeline and NVIDIA Nemotron 3 Diarization.
+Defines selectable speaker-diarization engines behind one contract, so users get NVIDIA Nemotron 3 Diarization by default and can choose the WeSpeaker pipeline instead.
 
 ## ADDED Requirements
 
 ### Requirement: REQ-DIAR-1 Engine selection
-The system MUST provide a `diarize_engine` setting (config file and CLI option) accepting `wespeaker` or `nemotron`, defaulting to `wespeaker`.
+The system MUST provide a `diarize_engine` setting (config file and CLI option) accepting `nemotron` or `wespeaker`, defaulting to `nemotron`.
 
 #### Scenario: Default engine
 - **WHEN** diarization runs and `diarize_engine` is unset
-- **THEN** the WeSpeaker engine is used and output is identical to the behaviour before this change
-
-#### Scenario: Nemotron selected
-- **WHEN** `diarize_engine = "nemotron"` and diarization runs
 - **THEN** the Nemotron engine produces the speaker turns
+
+#### Scenario: WeSpeaker selected
+- **WHEN** `diarize_engine = "wespeaker"` and diarization runs
+- **THEN** the WeSpeaker engine is used and output is identical to the behaviour before this change
 
 #### Scenario: Invalid value
 - **WHEN** `diarize_engine` is any other value
@@ -66,11 +66,11 @@ Both engines MUST process audio locally; audio SHALL NOT be sent to any remote s
 - **WHEN** weights are already cached and the network is unavailable
 - **THEN** diarization still completes
 
-### Requirement: NFR-DIAR-1 Default path unaffected
-Importing and running the default engine MUST NOT import the Nemotron runtime.
+### Requirement: NFR-DIAR-1 WeSpeaker path isolated
+Running the WeSpeaker engine MUST NOT import the Nemotron runtime.
 
-#### Scenario: Default import cost
-- **WHEN** diarization runs with the default engine
+#### Scenario: WeSpeaker import cost
+- **WHEN** diarization runs with `diarize_engine = "wespeaker"`
 - **THEN** the Nemotron runtime is not loaded
 
 ### Requirement: NFR-DIAR-2 Bundle size recorded
