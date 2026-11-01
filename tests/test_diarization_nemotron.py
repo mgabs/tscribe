@@ -257,10 +257,10 @@ def test_frozen_messages_exact(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     with pytest.raises(EngineUnavailableError) as info:
         nem.NemotronEngine()._binary()
-    assert str(info.value) == f"Bundled Nemotron runtime (nemo-speech) is missing at {tmp_path}/nemotron/bin/nemo-speech"
+    assert str(info.value) == f"Bundled Nemotron runtime (nemo-speech) is missing at {tmp_path / 'nemotron' / 'bin' / 'nemo-speech'}"
     with pytest.raises(EngineUnavailableError) as info:
         nem.NemotronEngine()._weights()
-    assert str(info.value) == f"Bundled Nemotron weights ({nem.WEIGHTS_NAME}) are missing at {tmp_path}/nemotron/{nem.WEIGHTS_NAME}"
+    assert str(info.value) == f"Bundled Nemotron weights ({nem.WEIGHTS_NAME}) are missing at {tmp_path / 'nemotron' / nem.WEIGHTS_NAME}"
 
 
 def test_invalid_output_message_and_weights_override_wins(runtime, monkeypatch):

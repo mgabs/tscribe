@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             // Opt-in hardware validation: playback is driven externally so that
             // ScreenCaptureKit includes it, with a fixed capture deadline here.
-            if CommandLine.arguments.contains("--smoke-recording") {
+            if ProcessInfo.processInfo.arguments.contains("--smoke-recording") {
                 @MainActor func writeReport(_ phase: String) {
                     result["phase"] = phase
                     result["error"] = self.model.error ?? ""
