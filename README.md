@@ -37,7 +37,7 @@ https://private-user-images.githubusercontent.com/1709257/546508788-dcd6ee47-d2b
 The self-contained [native Mac app](docs/macos-app.md) requires macOS 14 or later.
 The following requirements apply to the Python CLI:
 
-- Python 3.10+
+- Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Linux: PipeWire (for system audio capture)
 - macOS: [BlackHole](https://github.com/ExistentialAudio/BlackHole) (for system audio capture). Optional: [switchaudio-osx](https://github.com/deweller/switchaudio-osx) for auto-switching.
