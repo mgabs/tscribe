@@ -1,0 +1,37 @@
+name: Auto PR Develop to Main
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ensure-pr:
+    name: Ensure PR to main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_PR=$(gh pr list --head develop --base main --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR from develop to main is already open."
+            exit 0
+          fi
+
+          echo "No open PR found from develop to main. Opening PR..."
+          gh pr create \
+            --base main \
+            --head develop \
+            --title "Merge develop to main" \
+            --body "Automated PR created upon push to \`develop\`." || {
+              echo "Could not create PR (e.g. branch is already up to date with main)."
+            }
