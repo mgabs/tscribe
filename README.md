@@ -375,7 +375,7 @@ Available keys and defaults:
 | `transcription.language` | `"auto"` | Language code or auto-detect |
 | `transcription.output_formats` | `["txt","json"]` | Output formats (txt, json, srt, vtt) |
 | `transcription.gpu` | `false` | Request NVIDIA CUDA acceleration; fall back to CPU when unavailable |
-| `transcription.diarize` | `false` | Identify speakers by default |
+| `transcription.diarize` | `true` | Identify speakers by default |
 | `transcription.diarize_engine` | `"nemotron"` | Diarization engine: `nemotron` (max 8 speakers) or `wespeaker` |
 | `app.notifications` | `true` | Show macOS menu bar app notifications |
 | `app.recent_limit` | `5` | Number of recent recordings in the menu (positive integer) |
@@ -389,7 +389,7 @@ buttons also support live captions when enabled.
 
 | Key | Default | Accepted values |
 |-----|---------|-----------------|
-| `captions.enabled` | `false` | Enable live captions in the native app |
+| `captions.enabled` | `true` | Enable live captions in the native app |
 | `captions.model` | `"base"` | Same model choices as `transcription.model` |
 | `captions.audio_source` | `"both"` | `both`, `microphone`, `system`; used by Record Meeting |
 | `captions.output_mode` | `"headphones"` | `headphones`, `speakers` |

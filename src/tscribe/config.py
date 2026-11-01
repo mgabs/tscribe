@@ -39,7 +39,7 @@ class TranscriptionDefaults:
     language: str = DEFAULT_LANGUAGE
     output_formats: list[str] = field(default_factory=lambda: list(DEFAULT_OUTPUT_FORMATS))
     gpu: bool = False
-    diarize: bool = False
+    diarize: bool = True
     diarize_engine: str = "nemotron"
 
 
@@ -57,7 +57,7 @@ class AppDefaults:
 
 @dataclass
 class CaptionDefaults:
-    enabled: bool = False
+    enabled: bool = True
     model: str = "base"
     audio_source: str = "both"
     output_mode: str = "headphones"

@@ -14,7 +14,7 @@ model = "small"
 language = "auto"
 output_formats = ["txt", "json"] # Also supports "srt" and "vtt".
 gpu = false # CUDA acceleration; keep false on macOS.
-diarize = false
+diarize = true
 diarize_engine = "nemotron"  # "nemotron" or "wespeaker"
 
 [storage]
@@ -27,7 +27,7 @@ show_elapsed_time = true
 
 # Experimental native-app live captions. Language uses transcription.language.
 [captions]
-enabled = false
+enabled = true
 model = "base" # Separate, smaller caption model; final transcript uses transcription.model.
 audio_source = "both" # both, microphone, system
 output_mode = "headphones" # headphones, speakers
