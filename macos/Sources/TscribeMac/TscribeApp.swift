@@ -227,6 +227,7 @@ struct MainView: View {
     @ObservedObject var model: AppModel
     let delegate: AppDelegate
     @State private var settings = false
+    @State private var mapSpeakers = false
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -291,6 +292,7 @@ struct MainView: View {
                 HStack {
                     Text("Transcript").font(.headline)
                     Spacer()
+                    Button("Map Speakers") { mapSpeakers = true }.disabled(model.busy || model.selected == nil || model.transcript.isEmpty)
                     Button("Transcribe") { Task { await model.transcribeSelected() } }.disabled(model.busy || model.selected == nil)
                     Button("Copy") { model.copyTranscript() }.disabled(model.transcript.isEmpty)
                 }
@@ -312,7 +314,99 @@ struct MainView: View {
         }
         .onChange(of: model.selected) { _, _ in Task { await model.loadTranscript() } }
         .sheet(isPresented: $settings) { SettingsView(model: model) }
+        .sheet(isPresented: $mapSpeakers) {
+            if let stem = model.selected {
+                SpeakerMappingSheet(model: model, stem: stem, isPresented: $mapSpeakers)
+            }
+        }
 
+    }
+}
+
+struct SpeakerMappingSheet: View {
+    @ObservedObject var model: AppModel
+    let stem: String
+    @Binding var isPresented: Bool
+    @State private var entries: [SpeakerEntry] = []
+    @State private var isLoading = true
+    @State private var isSaving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Map Speakers").font(.title2.bold())
+            Text("Assign names to diarized speakers in this recording.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            if isLoading {
+                ProgressView().frame(maxWidth: .infinity, alignment: .center).padding()
+            } else if entries.isEmpty {
+                Text("No diarized speakers found in this transcript.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach($entries) { $entry in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(entry.rawSpeaker).font(.headline)
+                                    Spacer()
+                                    TextField("Speaker name", text: $entry.name)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(maxWidth: 220)
+                                }
+                                if !entry.sampleText.isEmpty {
+                                    Text("\"\(entry.sampleText)\"")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                            }
+                            .padding(8)
+                            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Button("Reset to Default") {
+                    for i in entries.indices {
+                        entries[i].name = entries[i].rawSpeaker
+                    }
+                }.disabled(isLoading || entries.isEmpty || isSaving)
+                Spacer()
+                Button("Cancel") {
+                    isPresented = false
+                }.disabled(isSaving)
+                Button("Save") {
+                    Task {
+                        isSaving = true
+                        var mapping: [String: String] = [:]
+                        for entry in entries {
+                            mapping[entry.rawSpeaker] = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                        do {
+                            try await model.updateSpeakers(for: stem, mapping: mapping)
+                            isPresented = false
+                        } catch {
+                            model.error = error.localizedDescription
+                        }
+                        isSaving = false
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoading || entries.isEmpty || isSaving)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 440, minHeight: 320)
+        .task {
+            entries = await model.loadSpeakers(for: stem)
+            isLoading = false
+        }
     }
 }
 

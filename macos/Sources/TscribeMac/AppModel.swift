@@ -17,6 +17,29 @@ struct RecordingSession: Identifiable {
     }
 }
 
+struct SpeakerEntry: Identifiable, Equatable {
+    var id: String { rawSpeaker }
+    let rawSpeaker: String
+    var name: String
+    let sampleText: String
+    let start: Double
+
+    init(rawSpeaker: String, name: String, sampleText: String, start: Double) {
+        self.rawSpeaker = rawSpeaker
+        self.name = name
+        self.sampleText = sampleText
+        self.start = start
+    }
+
+    init?(_ data: [String: Any]) {
+        guard let raw = data["raw_speaker"] as? String else { return nil }
+        self.rawSpeaker = raw
+        self.name = data["speaker"] as? String ?? raw
+        self.sampleText = data["sample_text"] as? String ?? ""
+        self.start = data["start"] as? Double ?? 0.0
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var phase = "loading"
@@ -190,6 +213,25 @@ final class AppModel: ObservableObject {
             let result = try await worker.request("read-transcript", values: ["stem": stem])
             if selected == stem { transcript = result["text"] as? String ?? "" }
         } catch { self.error = error.localizedDescription }
+    }
+
+    func loadSpeakers(for stem: String) async -> [SpeakerEntry] {
+        do {
+            let result = try await worker.request("get-speakers", values: ["stem": stem])
+            guard let list = result["speakers"] as? [[String: Any]] else { return [] }
+            return list.compactMap { SpeakerEntry($0) }
+        } catch {
+            self.error = error.localizedDescription
+            return []
+        }
+    }
+
+    func updateSpeakers(for stem: String, mapping: [String: String]) async throws {
+        let result = try await worker.request("set-speakers", values: ["stem": stem, "mapping": mapping])
+        if let newText = result["text"] as? String {
+            transcript = newText
+            transcriptCache[stem] = newText
+        }
     }
 
     func saveSettings() async {

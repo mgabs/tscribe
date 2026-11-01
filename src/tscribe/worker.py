@@ -110,6 +110,46 @@ class Worker:
                 result = TranscriptResult(data.get('file', path.name), data.get('model', ''), data.get('language', ''), [TranscriptSegment(**segment) for segment in data['segments']])
                 return {'text': result.to_txt()}
             return {'text': self.caption_text(path) or 'No text transcript is available. Select Transcribe to create one.'}
+        if command == 'get-speakers':
+            stem = request.get('stem')
+            path = self.recording_path(manager, stem)
+            json_path = path.with_suffix('.json')
+            if not json_path.is_file():
+                return {'speakers': []}
+            from tscribe.transcriber import TranscriptResult, TranscriptSegment
+            from tscribe.diarization import extract_speaker_samples
+            data = json.loads(json_path.read_text(encoding='utf-8'))
+            result = TranscriptResult(
+                data.get('file', path.name),
+                data.get('model', ''),
+                data.get('language', ''),
+                [TranscriptSegment(**segment) for segment in data.get('segments', [])],
+            )
+            return {'speakers': extract_speaker_samples(result)}
+        if command == 'set-speakers':
+            stem = request.get('stem')
+            mapping = request.get('mapping') or {}
+            path = self.recording_path(manager, stem)
+            json_path = path.with_suffix('.json')
+            if not json_path.is_file():
+                raise FileNotFoundError(f'Transcript JSON not found for {stem}')
+            from tscribe.transcriber import TranscriptResult, TranscriptSegment
+            from tscribe.diarization import remap_transcript_speakers
+            data = json.loads(json_path.read_text(encoding='utf-8'))
+            result = TranscriptResult(
+                data.get('file', path.name),
+                data.get('model', ''),
+                data.get('language', ''),
+                [TranscriptSegment(**segment) for segment in data.get('segments', [])],
+            )
+            remapped = remap_transcript_speakers(result, mapping)
+            json_path.write_text(json.dumps(remapped.to_json(), indent=2), encoding='utf-8')
+            for ext, render in (('txt', remapped.to_txt), ('srt', remapped.to_srt), ('vtt', remapped.to_vtt)):
+                out_path = path.with_suffix(f'.{ext}')
+                if out_path.exists():
+                    out_path.write_text(render(), encoding='utf-8')
+            manager.update_metadata(stem, speaker_map=mapping)
+            return {'status': 'ok', 'message': 'Updated speaker labels', 'text': remapped.to_txt()}
         raise ValueError(f'Unknown worker command: {command!r}')
 
     @staticmethod
