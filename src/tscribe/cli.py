@@ -261,6 +261,7 @@ def _auto_transcribe(
         click.echo(f"Transcription complete: {len(result.segments)} segments.")
 
         if getattr(cfg.transcription, "prompt_speaker_labels", False) and not names and should_diarize:
+            import json
             from tscribe.diarization import extract_speaker_samples, remap_transcript_speakers
             samples = extract_speaker_samples(result)
             if len(samples) >= 2:

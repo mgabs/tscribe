@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
 from click.testing import CliRunner
 from tscribe.cli import main
 from tscribe.transcriber import TranscriptResult, TranscriptSegment
 
 
 def test_cli_label_interactive(tmp_path):
+    """REQ-SPK-5: Interactive CLI mapping wizard."""
     runner = CliRunner()
     json_path = tmp_path / "test.json"
     txt_path = tmp_path / "test.txt"
@@ -52,6 +52,7 @@ def test_cli_label_non_interactive(tmp_path):
 
 
 def test_config_prompt_speaker_labels_default():
+    """REQ-SPK-6: Post-transcribe prompt configuration default."""
     from tscribe.config import TranscriptionDefaults
     td = TranscriptionDefaults()
     assert hasattr(td, "prompt_speaker_labels")

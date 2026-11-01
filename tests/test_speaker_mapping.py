@@ -1,9 +1,9 @@
-import pytest
 from tscribe.transcriber import TranscriptResult, TranscriptSegment
 from tscribe.diarization import remap_transcript_speakers, extract_speaker_samples
 
 
 def test_segment_raw_speaker_preservation():
+    """REQ-SPK-1: Raw speaker preservation in segment."""
     seg = TranscriptSegment(
         start=0.0,
         end=2.0,
@@ -17,7 +17,7 @@ def test_segment_raw_speaker_preservation():
 
 
 def test_segment_legacy_fallback():
-    # If raw_speaker is None, from dict without raw_speaker it defaults to speaker
+    """REQ-SPK-1: Fall back to speaker if raw_speaker missing."""
     seg = TranscriptSegment(
         start=0.0,
         end=2.0,
@@ -28,6 +28,7 @@ def test_segment_legacy_fallback():
 
 
 def test_remap_transcript_speakers_idempotence():
+    """REQ-SPK-2: Idempotent speaker remapping against raw_speaker."""
     segments = [
         TranscriptSegment(0.0, 1.0, "Hello", speaker="Speaker 1", raw_speaker="Speaker 1"),
         TranscriptSegment(1.0, 2.0, "Hi", speaker="Speaker 2", raw_speaker="Speaker 2"),

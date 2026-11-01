@@ -28,7 +28,7 @@ def test_worker_get_speakers_and_set_speakers(tmp_path):
     path.with_suffix(".txt").write_text(initial_result.to_txt(), encoding="utf-8")
     path.with_suffix(".srt").write_text(initial_result.to_srt(), encoding="utf-8")
 
-    # 1. Test get-speakers
+    # 1. Test get-speakers (REQ-SPK-3, REQ-SPK-7)
     res = call(worker, "get-speakers", stem=stem)
     assert "speakers" in res
     assert len(res["speakers"]) == 2
@@ -37,7 +37,7 @@ def test_worker_get_speakers_and_set_speakers(tmp_path):
     assert res["speakers"][1]["raw_speaker"] == "Speaker 2"
     assert res["speakers"][1]["sample_text"] == "Hi there"
 
-    # 2. Test set-speakers and latency
+    # 2. Test set-speakers and latency (REQ-SPK-4, REQ-SPK-7)
     t0 = time.perf_counter()
     res_set = call(
         worker,
