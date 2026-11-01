@@ -29,11 +29,12 @@ final class AppModel: ObservableObject {
     @Published var model = "small"
     @Published var language = "auto"
     @Published var autoTranscribe = true
-    @Published var diarize = false
+    @Published var diarize = true
+    @Published var diarizeEngine = "nemotron"
     @Published var notifications = true
     @Published var recentLimit = 5
     @Published var showElapsed = true
-    @Published var liveEnabled = false
+    @Published var liveEnabled = true
     @Published var captionModel = "base"
     let liveCaptions = LiveCaptions()
     @Published var captionAudioSource = "both"
@@ -90,12 +91,13 @@ final class AppModel: ObservableObject {
         guard let config = snapshot["config"] as? [String: [String: Any]] else { return }
         model = config["transcription"]?["model"] as? String ?? "small"
         language = config["transcription"]?["language"] as? String ?? "auto"
-        diarize = diarizeOverride ?? (config["transcription"]?["diarize"] as? Bool ?? false)
+        diarize = diarizeOverride ?? (config["transcription"]?["diarize"] as? Bool ?? true)
+        diarizeEngine = config["transcription"]?["diarize_engine"] as? String ?? "nemotron"
         autoTranscribe = config["recording"]?["auto_transcribe"] as? Bool ?? true
         notifications = config["app"]?["notifications"] as? Bool ?? true
         recentLimit = config["app"]?["recent_limit"] as? Int ?? 5
         showElapsed = config["app"]?["show_elapsed_time"] as? Bool ?? true
-        liveEnabled = config["captions"]?["enabled"] as? Bool ?? false
+        liveEnabled = config["captions"]?["enabled"] as? Bool ?? true
         captionModel = config["captions"]?["model"] as? String ?? "base"
         captionAudioSource = config["captions"]?["audio_source"] as? String ?? "both"
         captionOutputMode = config["captions"]?["output_mode"] as? String ?? "headphones"
@@ -196,7 +198,7 @@ final class AppModel: ObservableObject {
         do {
             apply(try await worker.request("save-config", values: ["changes": [
                 "transcription.model": model, "transcription.language": language,
-                "transcription.diarize": diarize, "recording.auto_transcribe": autoTranscribe,
+                "transcription.diarize": diarize, "transcription.diarize_engine": diarizeEngine, "recording.auto_transcribe": autoTranscribe,
                 "app.notifications": notifications, "app.recent_limit": recentLimit,
                 "app.show_elapsed_time": showElapsed,
                 "captions.enabled": liveEnabled, "captions.model": captionModel,

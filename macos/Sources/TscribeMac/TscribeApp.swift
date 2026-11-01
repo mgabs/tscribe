@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             // Opt-in hardware validation: playback is driven externally so that
             // ScreenCaptureKit includes it, with a fixed capture deadline here.
-            if CommandLine.arguments.contains("--smoke-recording") {
+            if ProcessInfo.processInfo.arguments.contains("--smoke-recording") {
                 @MainActor func writeReport(_ phase: String) {
                     result["phase"] = phase
                     result["error"] = self.model.error ?? ""
@@ -328,7 +328,11 @@ struct SettingsView: View {
                 }
                 TextField("Language (auto or a language code)", text: $model.language)
                 Toggle("Transcribe after recording", isOn: $model.autoTranscribe)
-                Toggle("Experimental speaker grouping", isOn: $model.diarize)
+                Toggle("Speaker grouping", isOn: $model.diarize)
+                Picker("Speaker engine", selection: $model.diarizeEngine) {
+                    Text("Nemotron 3 (bundled, up to 8 speakers)").tag("nemotron")
+                    Text("WeSpeaker (downloads on first use)").tag("wespeaker")
+                }.disabled(!model.diarize)
                 Toggle("Completion notifications", isOn: $model.notifications)
                 Stepper("Recent recordings: \(model.recentLimit)", value: $model.recentLimit, in: 1...100)
                 Section("Meeting captions — experimental") {

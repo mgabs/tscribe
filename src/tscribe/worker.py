@@ -181,6 +181,7 @@ class Worker:
             path, language=config.transcription.language,
             output_formats=config.transcription.output_formats,
             diarize=request.get('diarize', config.transcription.diarize),
+            diarize_engine=request.get('diarize_engine', config.transcription.diarize_engine),
             progress_callback=lambda current, total: self.emit({
                 'id': request['id'], 'event': 'progress', 'data': {'current': current, 'total': total},
             }),

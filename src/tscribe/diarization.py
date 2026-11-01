@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 import numpy as np
 from tscribe.transcriber import TranscriptSegment
 
@@ -107,7 +108,69 @@ def attribute_speakers(
     return segments
 
 
-class Diarizer:
+def download_weights(models_dir: Path, filename: str, url: str) -> Path:
+    """Return a cached model file, downloading it atomically on first use."""
+    import logging
+    import shutil
+    import ssl
+    import tempfile
+    from urllib.error import HTTPError
+    from urllib.request import urlopen
+    from uuid import uuid4
+
+    import truststore
+
+    destination = models_dir / filename
+    if destination.is_file() and destination.stat().st_size:
+        return destination
+    models_dir.mkdir(parents=True, exist_ok=True)
+    logging.getLogger(__name__).info("Downloading speaker model %s", filename)
+    try:
+        # Stage each download separately so interruption or concurrent workers
+        # cannot leave a partially downloaded model at the final path.
+        with tempfile.TemporaryDirectory(dir=models_dir) as temporary:
+            download_path = Path(temporary) / "download"  # pragma: no mutate
+            context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            try:
+                response = urlopen(url, timeout=60, context=context)
+            except HTTPError as error:
+                if error.code != 403:
+                    raise
+                error.close()
+                # A cached GitHub redirect may carry an expired asset signature.
+                # Request a fresh redirect once, keeping certificate checks on.
+                separator = "&" if "?" in url else "?"
+                response = urlopen(
+                    f"{url}{separator}tscribe={uuid4().hex}", timeout=60, context=context,
+                )
+            with response, download_path.open("wb") as output:
+                shutil.copyfileobj(response, output)
+            if not download_path.stat().st_size:
+                raise ValueError("Downloaded speaker model is empty")
+            download_path.replace(destination)
+    except (OSError, ValueError) as error:
+        raise RuntimeError(
+            f"Could not download speaker model {filename}: {error}. "
+            f"Download it from {url} and place "
+            f"{filename} at {destination} to use it offline."
+        ) from error
+    return destination
+
+
+class EngineUnavailableError(RuntimeError):
+    """Raised when a diarization engine's runtime or weights are missing."""
+
+
+class DiarizationEngine(Protocol):
+    def diarize(
+        self, audio_path: Path | str, num_speakers: int | None = None,
+    ) -> list[SpeakerTurn]: ...
+
+
+ENGINE_NAMES = ("nemotron", "wespeaker")
+
+
+class WeSpeakerEngine:
     """Local speaker diarization using neural voice embeddings and spectral clustering.
 
     Models are cached on first use; audio never leaves this machine.
@@ -119,51 +182,7 @@ class Diarizer:
         self.models_dir = models_dir or get_data_dir() / "models" / "diarization"
 
     def _get_model(self, filename: str, url: str) -> Path:
-        import logging
-        import shutil
-        import ssl
-        import tempfile
-        from urllib.error import HTTPError
-        from urllib.request import urlopen
-        from uuid import uuid4
-
-        import truststore
-
-        destination = self.models_dir / filename
-        if destination.is_file() and destination.stat().st_size:
-            return destination
-        self.models_dir.mkdir(parents=True, exist_ok=True)
-        logging.getLogger(__name__).info("Downloading speaker model %s", filename)
-        try:
-            # Stage each download separately so interruption or concurrent workers
-            # cannot leave a partially downloaded model at the final path.
-            with tempfile.TemporaryDirectory(dir=self.models_dir) as temporary:
-                download_path = Path(temporary) / "download"
-                context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-                try:
-                    response = urlopen(url, timeout=60, context=context)
-                except HTTPError as error:
-                    if error.code != 403:
-                        raise
-                    error.close()
-                    # A cached GitHub redirect may carry an expired asset signature.
-                    # Request a fresh redirect once, keeping certificate checks on.
-                    separator = "&" if "?" in url else "?"
-                    response = urlopen(
-                        f"{url}{separator}tscribe={uuid4().hex}", timeout=60, context=context,
-                    )
-                with response, download_path.open("wb") as output:
-                    shutil.copyfileobj(response, output)
-                if not download_path.stat().st_size:
-                    raise ValueError("Downloaded speaker model is empty")
-                download_path.replace(destination)
-        except (OSError, ValueError) as error:
-            raise RuntimeError(
-                f"Could not download speaker model {filename}: {error}. "
-                f"Download it from {url} and place "
-                f"{filename} at {destination} to use it offline."
-            ) from error
-        return destination
+        return download_weights(self.models_dir, filename, url)
 
     def _get_extractor(self):
         import sherpa_onnx
@@ -278,3 +297,19 @@ class Diarizer:
             embeddings.append(embedding)
             timestamps.append((start, end))
         return self._cluster_embeddings(np.asarray(embeddings), timestamps, num_speakers)
+
+
+Diarizer = WeSpeakerEngine
+
+
+def make_engine(name: str, models_dir: Path | None = None) -> DiarizationEngine:
+    """Build the named diarization engine; only the chosen engine's module is imported."""
+    if name == "wespeaker":
+        return WeSpeakerEngine(models_dir)
+    if name == "nemotron":
+        from tscribe.diarization_nemotron import NemotronEngine
+
+        return NemotronEngine()
+    raise ValueError(
+        f"Invalid diarization engine: {name!r}. Choose from: {', '.join(ENGINE_NAMES)}"
+    )

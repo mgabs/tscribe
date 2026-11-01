@@ -166,4 +166,3 @@ static inline void print_vec(float *vec, int len, char *name)
 #endif
 
 #endif
-

@@ -23,6 +23,7 @@ def main(destination: Path | None = None):
     if sys.platform != 'darwin':
         raise SystemExit('Build the native app on macOS.')
     run(sys.executable, ROOT / 'packaging/macos/build_audio_dsp.py')
+    run(sys.executable, ROOT / 'packaging/macos/fetch_nemotron.py')
     worker_dist = ROOT / 'build/worker-dist'
     run(sys.executable, '-m', 'PyInstaller', '--noconfirm',
         '--distpath', worker_dist, '--workpath', ROOT / 'build/pyinstaller',
@@ -45,7 +46,12 @@ def main(destination: Path | None = None):
             plistlib.dump(bundle_info(), stream)
         identity = os.environ.get('TSCRIBE_CODESIGN_IDENTITY', '-')
         options = ['--options', 'runtime'] if identity != '-' else []
-        # PyInstaller signs its native libraries; sign the new host and bundle last.
+        # PyInstaller signs its native libraries but not the Nemotron data tree; sign its Mach-O files first.
+        nemotron = resources / 'Worker/_internal/nemotron'
+        for path in sorted([*(nemotron / 'bin').iterdir(), *(nemotron / 'lib').glob('*.dylib')]):
+            if not path.is_symlink():
+                run('codesign', '--force', '--sign', identity, *options, path)
+        # Sign the new host and bundle last.
         run('codesign', '--force', '--sign', identity, *options, executable)
         run('codesign', '--force', '--sign', identity, *options, staged)
         run('codesign', '--verify', '--deep', '--strict', staged)

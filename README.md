@@ -37,7 +37,7 @@ https://private-user-images.githubusercontent.com/1709257/546508788-dcd6ee47-d2b
 The self-contained [native Mac app](docs/macos-app.md) requires macOS 14 or later.
 The following requirements apply to the Python CLI:
 
-- Python 3.10+
+- Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Linux: PipeWire (for system audio capture)
 - macOS: [BlackHole](https://github.com/ExistentialAudio/BlackHole) (for system audio capture). Optional: [switchaudio-osx](https://github.com/deweller/switchaudio-osx) for auto-switching.
@@ -178,13 +178,25 @@ A progress bar with ETA is shown during transcription:
 
 ### Speaker Diarization
 
-Speaker identification uses short speech windows and neural voice embeddings from
-[sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/speaker-identification/), with
-spectral clustering to group voices.
+Speakers are identified by the `diarize_engine` setting (`[transcription]`):
+
+- `nemotron` (default): NVIDIA Nemotron 3 Diarization, run locally through the
+  [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) runtime. Maximum 8 speakers.
+  The packaged macOS app bundles the runtime and weights (~121 MB) and works offline.
+  A source/dev install downloads the weights on first use and needs the `nemo-speech`
+  CLI on `PATH`.
+- `wespeaker`: opt out to the previous behaviour, short speech windows and neural voice
+  embeddings from [sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/speaker-identification/)
+  with spectral clustering.
+
+Choose per run with `--diarize-engine nemotron|wespeaker` on `record`, `transcribe` and
+`app`, or persist it with `tscribe config transcription.diarize_engine wespeaker`.
+There is no silent fallback between engines: a missing runtime or weights is an error.
+
 Word timestamps preserve speaker changes inside a transcription segment. Models
 are downloaded on first use to `~/.tscribe/models/diarization/` (or under
 `TSCRIBE_DATA_DIR`) and reused offline; audio stays on your computer. For offline
-setup, place `wespeaker_en_voxceleb_resnet34_LM.onnx` in that directory. A download
+setup of WeSpeaker, place `wespeaker_en_voxceleb_resnet34_LM.onnx` in that directory. A download
 failure reports the source URL and expected path; it does not fall back to
 volume-based grouping.
 Speaker detection can still make mistakes, especially during overlapping speech.
@@ -363,7 +375,8 @@ Available keys and defaults:
 | `transcription.language` | `"auto"` | Language code or auto-detect |
 | `transcription.output_formats` | `["txt","json"]` | Output formats (txt, json, srt, vtt) |
 | `transcription.gpu` | `false` | Request NVIDIA CUDA acceleration; fall back to CPU when unavailable |
-| `transcription.diarize` | `false` | Identify speakers by default |
+| `transcription.diarize` | `true` | Identify speakers by default |
+| `transcription.diarize_engine` | `"nemotron"` | Diarization engine: `nemotron` (max 8 speakers) or `wespeaker` |
 | `app.notifications` | `true` | Show macOS menu bar app notifications |
 | `app.recent_limit` | `5` | Number of recent recordings in the menu (positive integer) |
 | `app.show_elapsed_time` | `true` | Show elapsed recording time in the menu bar |
@@ -376,7 +389,7 @@ buttons also support live captions when enabled.
 
 | Key | Default | Accepted values |
 |-----|---------|-----------------|
-| `captions.enabled` | `false` | Enable live captions in the native app |
+| `captions.enabled` | `true` | Enable live captions in the native app |
 | `captions.model` | `"base"` | Same model choices as `transcription.model` |
 | `captions.audio_source` | `"both"` | `both`, `microphone`, `system`; used by Record Meeting |
 | `captions.output_mode` | `"headphones"` | `headphones`, `speakers` |

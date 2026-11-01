@@ -2,7 +2,7 @@
 name = "tscribe"
 version = "2.3.1"
 description = "Cross-platform CLI tool for recording audio and transcribing with faster-whisper"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "click>=8.0",
     "sounddevice>=0.4",
@@ -40,8 +40,8 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.mutmut]
 source_paths = ["src/"]
-only_mutate = ["src/tscribe/config.py", "src/tscribe/paths.py"]
-pytest_add_cli_args_test_selection = ["tests/test_config.py", "tests/test_paths.py"]
+only_mutate = ["src/tscribe/config.py", "src/tscribe/paths.py", "src/tscribe/diarization_nemotron.py"]
+pytest_add_cli_args_test_selection = ["tests/test_config.py", "tests/test_paths.py", "tests/test_diarization_nemotron.py"]
 use_setproctitle = false
 
 [dependency-groups]

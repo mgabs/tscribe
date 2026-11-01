@@ -228,6 +228,7 @@ def _auto_transcribe(
     stem,
     session_mgr,
     diarize: bool | None = None,
+    diarize_engine: str | None = None,
     num_speakers: int | None = None,
     names: str | None = None,
 ):
@@ -251,6 +252,7 @@ def _auto_transcribe(
             output_formats=cfg.transcription.output_formats,
             progress_callback=_progress,
             diarize=should_diarize,
+            diarize_engine=diarize_engine or cfg.transcription.diarize_engine,
             num_speakers=num_speakers,
             names=names,
         )
@@ -276,9 +278,10 @@ def main():
 @click.option("--sample-rate", type=int, default=None, help="Sample rate in Hz.")
 @click.option("--channels", type=int, default=None, help="Number of channels.")
 @click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization.")
+@click.option("--diarize-engine", type=click.Choice(["nemotron", "wespeaker"]), default=None, help="Diarization engine (default: config, else nemotron).")
 @click.option("--speakers", type=int, default=None, help="Expected number of speakers.")
 @click.option("--names", default=None, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
-def record(device, loopback, output, no_transcribe, sample_rate, channels, diarize, speakers, names):
+def record(device, loopback, output, no_transcribe, sample_rate, channels, diarize, diarize_engine, speakers, names):
     """Record audio from system audio (default) or microphone."""
     from tscribe.recorder import RecordingConfig
 
@@ -361,6 +364,7 @@ def record(device, loopback, output, no_transcribe, sample_rate, channels, diari
                 stem,
                 session_mgr,
                 diarize=diarize,
+                diarize_engine=diarize_engine,
                 num_speakers=speakers,
                 names=names,
             )
@@ -414,9 +418,10 @@ def _download_audio(url, output_dir):
 @click.option("--format", "fmt", default=None, help="Output format: txt,json,srt,vtt,all")
 @click.option("--gpu/--no-gpu", default=None, help="Request NVIDIA CUDA acceleration; fall back to CPU if unavailable.")
 @click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization.")
+@click.option("--diarize-engine", type=click.Choice(["nemotron", "wespeaker"]), default=None, help="Diarization engine (default: config, else nemotron).")
 @click.option("--speakers", type=int, default=None, help="Expected number of speakers.")
 @click.option("--names", default=None, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
-def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, names):
+def transcribe(source, model, language, output, fmt, gpu, diarize, diarize_engine, speakers, names):
     """Transcribe an audio file, URL, or previous recording.
 
     \b
@@ -527,6 +532,7 @@ def transcribe(source, model, language, output, fmt, gpu, diarize, speakers, nam
         output_formats=output_formats,
         progress_callback=_progress,
         diarize=should_diarize,
+        diarize_engine=diarize_engine or cfg.transcription.diarize_engine,
         num_speakers=speakers,
         names=names,
         **output_options,
@@ -1149,8 +1155,9 @@ def clean(days, days_30, yes, dry_run, custom_dir):
 
 @main.command()
 @click.option("--diarize/--no-diarize", default=None, help="Enable speaker diarization by default.")
+@click.option("--diarize-engine", type=click.Choice(["nemotron", "wespeaker"]), default=None, help="Diarization engine (default: config, else nemotron).")
 @click.option("--install-desktop", is_flag=True, help="Install the built native app in ~/Applications.")
-def app(diarize, install_desktop):
+def app(diarize, diarize_engine, install_desktop):
     """Open the native macOS recording app and menu bar controls."""
     if sys.platform != "darwin":
         raise click.ClickException("The 'app' command is only supported on macOS.")
@@ -1171,6 +1178,10 @@ def app(diarize, install_desktop):
     arguments = ["open", str(bundle)]
     if diarize is not None:
         arguments.extend(["--args", "--diarize" if diarize else "--no-diarize"])
+    if diarize_engine is not None:
+        if diarize is None:
+            arguments.append("--args")
+        arguments.extend(["--diarize-engine", diarize_engine])
     try:
         subprocess.run(arguments, check=True)
     except (OSError, subprocess.CalledProcessError) as exc:

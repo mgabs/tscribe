@@ -5,6 +5,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 root = Path(SPECPATH).parents[1]
 datas = collect_data_files('faster_whisper')
 datas += [(str(root / 'vendor/speexdsp' / name), 'licenses/SpeexDSP') for name in ('COPYING', 'THIRD_PARTY_NOTICES.txt')]
+datas.append((str(root / 'build/nemotron'), 'nemotron'))
 for package in ('faster-whisper', 'ctranslate2', 'huggingface-hub', 'tokenizers', 'tqdm'):
     datas += copy_metadata(package)
 a = Analysis(

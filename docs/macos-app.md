@@ -130,7 +130,11 @@ audio, and reports that the draft may be incomplete. With
 and replaces the preview with the final transcript. With it disabled, the draft
 remains available in the app; select **Transcribe** later for a final version.
 Live drafts do not perform speaker diarization. Final transcription uses the
-existing `transcription.diarize` setting.
+existing `transcription.diarize` setting, with the engine chosen by
+`transcription.diarize_engine` (`nemotron` default, max 8 speakers; `wespeaker` opts
+out to the previous behaviour). The app bundles the Nemotron 3 Diarization runtime
+and weights (~121 MB), so diarization works offline; there is no silent fallback
+between engines. Override per launch with `--diarize-engine`.
 
 Combined meeting capture preserves separate original microphone/system WAVs under
 `recordings/.tracks/STEM/` and produces a time-aligned mixed `STEM.wav` after

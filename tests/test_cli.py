@@ -7,11 +7,19 @@ import wave
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 from click.testing import CliRunner
 
 from tscribe import __version__
 from tscribe.cli import main
 from tscribe.recorder import MockRecorder
+
+
+@pytest.fixture
+def no_diarize_by_default(tmp_path, monkeypatch):
+    cfg = tmp_path / "cli-config.toml"
+    cfg.write_text("[transcription]\ndiarize = false\n[captions]\nenabled = false\n")
+    monkeypatch.setenv("TSCRIBE_CONFIG_FILE", str(cfg))
 
 
 def _make_wav(path, duration=1.0):
@@ -158,6 +166,7 @@ def _mock_whisper_for_cli():
     return mock_model
 
 
+@pytest.mark.usefixtures('no_diarize_by_default')
 def test_transcribe_with_mock(monkeypatch, tmp_path):
     """Test transcribe command with mocked faster-whisper."""
     monkeypatch.setenv("TSCRIBE_DATA_DIR", str(tmp_path))
@@ -175,6 +184,7 @@ def test_transcribe_with_mock(monkeypatch, tmp_path):
     assert "Transcription complete" in result.output
 
 
+@pytest.mark.usefixtures('no_diarize_by_default')
 def test_transcribe_format_all(monkeypatch, tmp_path):
     monkeypatch.setenv("TSCRIBE_DATA_DIR", str(tmp_path))
 
@@ -209,6 +219,7 @@ def test_transcribe_url_missing_ytdlp(monkeypatch, tmp_path):
     assert "yt-dlp" in result.output
 
 
+@pytest.mark.usefixtures('no_diarize_by_default')
 def test_transcribe_url_with_mock(monkeypatch, tmp_path):
     """URL transcription downloads audio, imports to recordings, then transcribes."""
     monkeypatch.setenv("TSCRIBE_DATA_DIR", str(tmp_path))
@@ -237,6 +248,7 @@ def test_transcribe_url_with_mock(monkeypatch, tmp_path):
     assert len(list(rec_dir.glob("*.txt"))) == 1
 
 
+@pytest.mark.usefixtures('no_diarize_by_default')
 def test_transcribe_ref(monkeypatch, tmp_path):
     """Transcribe a previous recording by REF (HEAD)."""
     monkeypatch.setenv("TSCRIBE_DATA_DIR", str(tmp_path))
@@ -255,6 +267,7 @@ def test_transcribe_ref(monkeypatch, tmp_path):
     assert (rec_dir / "2025-06-01-120000.txt").exists()
 
 
+@pytest.mark.usefixtures('no_diarize_by_default')
 def test_transcribe_stem(monkeypatch, tmp_path):
     """Transcribe a previous recording by session stem."""
     monkeypatch.setenv("TSCRIBE_DATA_DIR", str(tmp_path))

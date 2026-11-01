@@ -180,6 +180,7 @@ class Transcriber:
         output_formats: list[str] | None = None,
         progress_callback: Callable[[float, float], None] | None = None,
         diarize: bool = False,
+        diarize_engine: str = "nemotron",
         num_speakers: int | None = None,
         names: str | None = None,
         output_base: Path | None = None,
@@ -223,12 +224,12 @@ class Transcriber:
 
         if diarize:
             from tscribe.diarization import (
-                Diarizer,
                 attribute_speakers,
+                make_engine,
                 parse_speaker_names,
             )
 
-            diarizer = Diarizer()
+            diarizer = make_engine(diarize_engine)
             speaker_turns = diarizer.diarize(audio_path, num_speakers=num_speakers)
             name_map = parse_speaker_names(names)
             segments = attribute_speakers(

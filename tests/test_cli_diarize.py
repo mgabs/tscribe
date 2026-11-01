@@ -196,17 +196,30 @@ def test_cli_config_diarize(monkeypatch, tmp_path):
     monkeypatch.setenv("TSCRIBE_DATA_DIR", str(tmp_path))
     runner = CliRunner()
 
-    # Get default diarize config
+    # Diarization is on by default
+    res = runner.invoke(main, ["config", "transcription.diarize"])
+    assert res.exit_code == 0
+    assert "True" in res.output
+
+    res = runner.invoke(main, ["config", "transcription.diarize", "false"])
+    assert res.exit_code == 0
+    assert "False" in res.output
+
     res = runner.invoke(main, ["config", "transcription.diarize"])
     assert res.exit_code == 0
     assert "False" in res.output
 
-    # Set diarize config to true
-    res = runner.invoke(main, ["config", "transcription.diarize", "true"])
-    assert res.exit_code == 0
-    assert "True" in res.output
 
-    # Verify get returns True
-    res = runner.invoke(main, ["config", "transcription.diarize"])
-    assert res.exit_code == 0
-    assert "True" in res.output
+def test_cli_diarize_engine_option_reaches_transcriber(tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"x")
+    result_obj = TranscriptResult(file="a.wav", model="base", language="en", segments=[])
+    with patch("tscribe.transcriber.Transcriber") as transcriber:
+        transcriber.return_value.transcribe.return_value = result_obj
+        res = CliRunner().invoke(main, [
+            "transcribe", str(audio), "--diarize", "--diarize-engine", "wespeaker",
+        ])
+    assert res.exit_code == 0, res.output
+    assert transcriber.return_value.transcribe.call_args.kwargs["diarize_engine"] == "wespeaker"
+    bad = CliRunner().invoke(main, ["transcribe", str(audio), "--diarize-engine", "x"])
+    assert bad.exit_code == 2 and "nemotron" in bad.output
