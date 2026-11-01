@@ -32,6 +32,23 @@ class TranscriptSegment:
     text: str
     confidence: float = 0.0
     speaker: str | None = None
+    raw_speaker: str | None = None
+
+    def __post_init__(self):
+        if self.raw_speaker is None and self.speaker is not None:
+            self.raw_speaker = self.speaker
+
+    def to_dict(self) -> dict:
+        d = {
+            "start": self.start,
+            "end": self.end,
+            "text": self.text.strip(),
+            "confidence": self.confidence,
+            "speaker": self.speaker,
+        }
+        if self.raw_speaker is not None:
+            d["raw_speaker"] = self.raw_speaker
+        return d
 
 
 @dataclass
@@ -75,16 +92,7 @@ class TranscriptResult:
             "file": self.file,
             "model": self.model,
             "language": self.language,
-            "segments": [
-                {
-                    "start": seg.start,
-                    "end": seg.end,
-                    "text": seg.text.strip(),
-                    "confidence": seg.confidence,
-                    "speaker": seg.speaker,
-                }
-                for seg in self.segments
-            ],
+            "segments": [seg.to_dict() for seg in self.segments],
         }
 
     def to_srt(self) -> str:

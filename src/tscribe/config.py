@@ -41,6 +41,7 @@ class TranscriptionDefaults:
     gpu: bool = False
     diarize: bool = True
     diarize_engine: str = "nemotron"
+    prompt_speaker_labels: bool = False
 
 
 @dataclass

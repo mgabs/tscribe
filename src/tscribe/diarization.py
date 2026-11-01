@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 import numpy as np
-from tscribe.transcriber import TranscriptSegment
+from tscribe.transcriber import TranscriptResult, TranscriptSegment
 
 
 @dataclass
@@ -83,6 +83,7 @@ def attribute_speakers(
                     groups.append(TranscriptSegment(
                         start=word.start, end=word.end, text=word.text,
                         confidence=segment.confidence, speaker=word.speaker,
+                        raw_speaker=word.raw_speaker,
                     ))
             attributed.extend(groups)
         return attributed
@@ -103,9 +104,54 @@ def attribute_speakers(
                 best_speaker = turn.speaker_id
 
         if best_speaker:
+            seg.raw_speaker = best_speaker
             seg.speaker = name_map.get(best_speaker, best_speaker)
 
     return segments
+
+
+def extract_speaker_samples(result: TranscriptResult) -> list[dict[str, Any]]:
+    """Extract distinct speakers, their raw_speaker, current speaker, and first speech excerpt."""
+    speakers: dict[str, dict[str, Any]] = {}
+    for seg in result.segments:
+        raw = seg.raw_speaker or seg.speaker
+        if not raw:
+            continue
+        if raw not in speakers:
+            speakers[raw] = {
+                "raw_speaker": raw,
+                "speaker": seg.speaker or raw,
+                "start": seg.start,
+                "sample_text": seg.text.strip(),
+            }
+    return list(speakers.values())
+
+
+def remap_transcript_speakers(
+    result: TranscriptResult,
+    speaker_map: dict[str, str],
+) -> TranscriptResult:
+    """Return a new TranscriptResult with speaker fields updated from raw_speaker."""
+    new_segments: list[TranscriptSegment] = []
+    for seg in result.segments:
+        raw = seg.raw_speaker or seg.speaker
+        new_speaker = speaker_map.get(raw, raw) if raw else seg.speaker
+        new_segments.append(
+            TranscriptSegment(
+                start=seg.start,
+                end=seg.end,
+                text=seg.text,
+                confidence=seg.confidence,
+                speaker=new_speaker,
+                raw_speaker=raw,
+            )
+        )
+    return TranscriptResult(
+        file=result.file,
+        model=result.model,
+        language=result.language,
+        segments=new_segments,
+    )
 
 
 def download_weights(models_dir: Path, filename: str, url: str) -> Path:
