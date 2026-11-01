@@ -259,6 +259,32 @@ def _auto_transcribe(
         click.echo()
         session_mgr.update_metadata(stem, transcribed=True, model=model_name)
         click.echo(f"Transcription complete: {len(result.segments)} segments.")
+
+        if getattr(cfg.transcription, "prompt_speaker_labels", False) and not names and should_diarize:
+            import json
+            from tscribe.diarization import extract_speaker_samples, remap_transcript_speakers
+            samples = extract_speaker_samples(result)
+            if len(samples) >= 2:
+                import sys
+                if sys.stdin.isatty():
+                    click.echo(f"\nFound {len(samples)} speakers. Label them now:")
+                    mapping = {}
+                    for spk in samples:
+                        preview = spk['sample_text'][:40]
+                        if len(spk['sample_text']) > 40:
+                            preview += "..."
+                        val = click.prompt(f"  {spk['raw_speaker']} (\"{preview}\")", default=spk["speaker"])
+                        mapping[spk["raw_speaker"]] = val.strip()
+                    remapped = remap_transcript_speakers(result, mapping)
+                    json_path = wav_path.with_suffix(".json")
+                    if json_path.exists():
+                        json_path.write_text(json.dumps(remapped.to_json(), indent=2), encoding="utf-8")
+                    for ext, render in (("txt", remapped.to_txt), ("srt", remapped.to_srt), ("vtt", remapped.to_vtt)):
+                        out_path = wav_path.with_suffix(f".{ext}")
+                        if out_path.exists():
+                            out_path.write_text(render(), encoding="utf-8")
+                    session_mgr.update_metadata(stem, speaker_map=mapping)
+                    click.echo("Updated speaker labels.")
     except Exception as e:
         click.echo(f"\nTranscription failed: {e}")
 
@@ -904,15 +930,17 @@ def path(ref, fmt):
 
 @main.command()
 @click.argument("ref", default="HEAD")
-@click.option("--names", required=True, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
+@click.option("--names", default=None, required=False, help="Comma-separated speaker names (e.g. 'Alice,Bob').")
 def label(ref, names):
     """Re-label speaker names in an existing transcript."""
     import json
 
-    from tscribe.diarization import parse_speaker_names
+    from tscribe.diarization import extract_speaker_samples, parse_speaker_names, remap_transcript_speakers
     from tscribe.transcriber import TranscriptResult, TranscriptSegment
 
     json_path = None
+    session = None
+    session_mgr = None
     ref_path = Path(ref)
     if ref_path.is_file():
         if ref_path.suffix == ".json":
@@ -922,7 +950,8 @@ def label(ref, names):
     elif ref.endswith(".json"):
         raise click.ClickException(f"File not found: {ref}")
     else:
-        session = _resolve_session(ref, _session_manager())
+        session_mgr = _session_manager()
+        session = _resolve_session(ref, session_mgr)
         json_path = session.wav_path.with_suffix(".json")
 
     if not json_path or not json_path.exists():
@@ -931,55 +960,60 @@ def label(ref, names):
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    name_map = parse_speaker_names(names)
-    tokens = [t.strip() for t in names.split(",") if t.strip()]
-    is_explicit = any("=" in token for token in tokens)
-
-    distinct_speakers = []
-    for seg in data.get("segments", []):
-        spk = seg.get("speaker")
-        if spk and spk not in distinct_speakers:
-            distinct_speakers.append(spk)
-
-    positional_map = {}
-    if not is_explicit:
-        for idx, spk in enumerate(distinct_speakers):
-            if idx < len(tokens):
-                positional_map[spk] = tokens[idx]
-
-    segments = []
-    for s in data.get("segments", []):
-        spk = s.get("speaker")
-        if spk:
-            if spk in name_map:
-                spk = name_map[spk]
-            elif spk in positional_map:
-                spk = positional_map[spk]
-        segments.append(
-            TranscriptSegment(
-                start=s["start"],
-                end=s["end"],
-                text=s["text"],
-                confidence=s.get("confidence", 0.0),
-                speaker=spk,
-            )
-        )
-
     result = TranscriptResult(
         file=data.get("file", json_path.stem),
         model=data.get("model", "unknown"),
         language=data.get("language", "en"),
-        segments=segments,
+        segments=[TranscriptSegment(**s) for s in data.get("segments", [])],
     )
 
-    json_path.write_text(json.dumps(result.to_json(), indent=2))
+    mapping: dict[str, str] = {}
+    if names is not None:
+        name_map = parse_speaker_names(names)
+        tokens = [t.strip() for t in names.split(",") if t.strip()]
+        is_explicit = any("=" in token for token in tokens)
+
+        distinct_speakers: list[str] = []
+        for seg in result.segments:
+            raw = seg.raw_speaker or seg.speaker
+            if raw and raw not in distinct_speakers:
+                distinct_speakers.append(raw)
+
+        if is_explicit:
+            mapping = name_map
+        else:
+            for idx, raw in enumerate(distinct_speakers):
+                if idx < len(tokens):
+                    mapping[raw] = tokens[idx]
+    else:
+        samples = extract_speaker_samples(result)
+        if not samples:
+            click.echo("No diarized speakers found in transcript.")
+            return
+
+        click.echo(f"Found {len(samples)} speaker{'s' if len(samples) != 1 else ''}:")
+        for spk in samples:
+            sample_preview = spk['sample_text'][:40]
+            if len(spk['sample_text']) > 40:
+                sample_preview += "..."
+            val = click.prompt(
+                f"  {spk['raw_speaker']} (\"{sample_preview}\")",
+                default=spk["speaker"],
+            )
+            mapping[spk["raw_speaker"]] = val.strip()
+
+    remapped = remap_transcript_speakers(result, mapping)
+    json_path.write_text(json.dumps(remapped.to_json(), indent=2), encoding="utf-8")
 
     updated_files = [json_path.name]
-    for ext, render in (("txt", result.to_txt), ("srt", result.to_srt), ("vtt", result.to_vtt)):
+    for ext, render in (("txt", remapped.to_txt), ("srt", remapped.to_srt), ("vtt", remapped.to_vtt)):
         out_path = json_path.with_suffix(f".{ext}")
         if out_path.exists():
-            out_path.write_text(render())
+            out_path.write_text(render(), encoding="utf-8")
             updated_files.append(out_path.name)
+
+    if session and session_mgr:
+        session_mgr.update_metadata(session.stem, speaker_map=mapping)
 
     click.echo(f"Updated speaker labels in {', '.join(updated_files)}.")
 
