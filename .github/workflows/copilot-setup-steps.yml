@@ -15,7 +15,7 @@ on:
 jobs:
   # The job MUST be called `copilot-setup-steps` for Copilot coding agent to pick it up.
   copilot-setup-steps:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     permissions:
