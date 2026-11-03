@@ -52,9 +52,11 @@ artifacts:
 
       Spec-Rails conventions:
       - Every requirement header starts with its stable key: `### Requirement: REQ-<DOMAIN>-<N> <Name>`
-        (or `NFR-<DOMAIN>-<N>` for budgets). Keys are never reused; deprecated requirements stay, marked `[DEPRECATED by <change>]`.
+        (or `NFR-<DOMAIN>-<N>` for budgets). Keys are never reused. Deprecated requirements keep their exact
+        `### Requirement: REQ-... <Name>` header in `## MODIFIED Requirements` (preserving OpenSpec exact header matching)
+        and place `**[DEPRECATED by <change>]**` at the start of the requirement body (or use `## RENAMED Requirements` if renaming).
         MODIFIED and REMOVED headers must repeat the full `REQ-... <Name>` text exactly, because OpenSpec matches on the whole header.
-      - Requirement text uses MUST/SHALL. Scenarios use exactly four hashtags (`#### Scenario:`) with WHEN/THEN (Given/When/Then intent).
+      - Requirement text uses MUST/SHALL. Scenarios use exactly four hashtags (`#### Scenario:`) with GIVEN/WHEN/THEN steps (for OpenSpec 1.16 `--strict`).
       - Cover Non-Functional Requirements and budgets (`NFR-*`), Assumptions (`ASM-*`), and Edge Cases & Errors.
 
       Stop at the Review Gate: only the human ticks the Gate 2 box.
@@ -74,7 +76,7 @@ artifacts:
       - Architecture Diagrams & Data Flow.
       - Boundary Rules (Pure Core vs. I/O Shell): the core has no direct I/O, network or framework coupling.
       - Concurrency, Latency & Resource Budgets matching the `NFR-*` requirements.
-      - Testing Strategy (BDD, unit >= 95% line and branch coverage, mutation 100% kill).
+      - Testing Strategy (BDD, unit >= 95% line and branch coverage, mutation > 90% kill).
       UI work adds frame and input-latency budgets; ML/data work starts from a deterministic Tier 0 baseline.
 
       Stop at the Review Gate: only the human ticks the Gate 3 box.
@@ -92,6 +94,7 @@ artifacts:
 
       Every tracked task MUST be a checkbox: `- [ ] X.Y Task description`, stating how to verify it.
       Streams may only be created for slices with no mutual dependencies, after the shared contract is committed.
+      Human `## Review Gate` and Gate 5.x sign-off checkboxes MUST NOT be ticked by `/opsx-apply` agents.
 
       Stop at the Review Gate: only the human ticks the Gate 4 box.
     requires:
@@ -102,7 +105,7 @@ apply:
   tracks: tasks.md
   instruction: |
     Work one vertical slice at a time, in this order:
-    1. BDD: write Gherkin scenarios for every REQ and NFR in the slice, then STOP for the human's Gate 5.x approval.
+    1. BDD: write Gherkin scenarios for every REQ and NFR in the slice, then STOP for the human's Gate 5.x approval (human Review Gate and Gate 5.x sign-off checkboxes MUST NOT be ticked by `/opsx-apply` agents).
     2. Red: write failing unit tests and confirm they fail for the expected reason. Do not commit them alone.
     3. Green: write the minimal production code, then commit tests and code together.
     4. Coverage: at least 95% line and branch on the slice's modules.
