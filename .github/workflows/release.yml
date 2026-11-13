@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -18,6 +19,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.version.outputs.should_release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -25,32 +28,52 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           python-version: '3.12'
-      - name: Match stable tag to both project versions
+      - name: Check project version and release state
         id: version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           uv run --no-project python - <<'PY'
+          import json
           import os
           import re
           import runpy
+          import subprocess
           import tomllib
           from pathlib import Path
-          tag = os.environ['RELEASE_TAG']
+
           version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
           package_version = runpy.run_path('src/tscribe/__init__.py')['__version__']
-          if not re.fullmatch(r'v\d+\.\d+\.\d+', tag) or tag != f'v{version}' or package_version != version:
-              raise SystemExit(f'Tag {tag} must match project/package versions {version}/{package_version}')
+          if not re.fullmatch(r'\d+\.\d+\.\d+', version) or package_version != version:
+              raise SystemExit(f'Project/package versions must be X.Y.Z and match: {version}/{package_version}')
+
+          tag = f'v{version}'
+          proc = subprocess.run(
+              ['gh', 'release', 'view', tag, '--json', 'isDraft'],
+              capture_output=True,
+              text=True,
+          )
+          should_release = True
+          if proc.returncode == 0:
+              is_draft = json.loads(proc.stdout).get('isDraft', False)
+              if not is_draft:
+                  print(f'Release {tag} is already published; skipping release pipeline.')
+                  should_release = False
+
           with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
               output.write(f'version={version}\n')
+              output.write(f'tag={tag}\n')
+              output.write(f'should_release={str(should_release).lower()}\n')
           PY
 
   checks:
     needs: version
+    if: needs.version.outputs.should_release == 'true'
     uses: ./.github/workflows/ci.yml
 
   cli:
-    needs: checks
+    needs: [version, checks]
+    if: needs.version.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -72,6 +95,7 @@ jobs:
 
   macos:
     needs: [version, checks]
+    if: needs.version.outputs.should_release == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -113,10 +137,14 @@ jobs:
 
   publish:
     needs: [version, cli, macos]
+    if: needs.version.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+    outputs:
+      arm64_sha256: ${{ steps.checksums.outputs.arm64_sha256 }}
+      x86_64_sha256: ${{ steps.checksums.outputs.x86_64_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -127,9 +155,18 @@ jobs:
           merge-multiple: true
           path: dist
       - name: Create checksums and release notes
+        id: checksums
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           cd dist
           sha256sum ./*.whl ./*.tar.gz ./*.zip > SHA256SUMS
+          arm64_sha=$(sha256sum "tscribe-${VERSION}-macos-arm64.zip" | awk '{print $1}')
+          x86_64_sha=$(sha256sum "tscribe-${VERSION}-macos-x86_64.zip" | awk '{print $1}')
+          {
+            echo "arm64_sha256=$arm64_sha"
+            echo "x86_64_sha256=$x86_64_sha"
+          } >> "$GITHUB_OUTPUT"
           cat > ../release-notes.md <<'NOTES'
           Includes the Python CLI and self-contained macOS apps for Apple Silicon and Intel.
           Choose the macOS archive matching your processor. Models download on first use; transcription runs locally.
@@ -139,16 +176,120 @@ jobs:
       - name: Publish all verified assets together
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
-          if state=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
+          if state=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null); then
             if [ "$state" != true ]; then
               echo '::error::This release is already published; refusing to replace its assets.'
               exit 1
             fi
           else
-            gh release create "$RELEASE_TAG" --draft --verify-tag \
+            gh release create "$RELEASE_TAG" --draft --target "$TARGET_SHA" \
               --title "tscribe $RELEASE_TAG" --generate-notes --notes-file release-notes.md
           fi
           gh release upload "$RELEASE_TAG" dist/*.whl dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber
           gh release edit "$RELEASE_TAG" --draft=false
+
+  homebrew-tap:
+    name: Update Homebrew Tap
+    needs: [version, publish]
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: mgabs/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Update tscribe cask
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARM64_SHA256: ${{ needs.publish.outputs.arm64_sha256 }}
+          X86_64_SHA256: ${{ needs.publish.outputs.x86_64_sha256 }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          arm64_sha = os.environ["ARM64_SHA256"]
+          x86_64_sha = os.environ["X86_64_SHA256"]
+
+          cask_content = f'''cask "tscribe" do
+            version "{version}"
+
+            on_arm do
+              sha256 "{arm64_sha}"
+              url "https://github.com/mgabs/tscribe/releases/download/v#{{version}}/tscribe-#{{version}}-macos-arm64.zip"
+            end
+            on_intel do
+              sha256 "{x86_64_sha}"
+              url "https://github.com/mgabs/tscribe/releases/download/v#{{version}}/tscribe-#{{version}}-macos-x86_64.zip"
+            end
+
+            name "tscribe"
+            desc "Local audio recorder and transcriber with faster-whisper"
+            homepage "https://github.com/mgabs/tscribe"
+
+            livecheck do
+              url :url
+              strategy :github_latest
+            end
+
+            depends_on macos: :sonoma
+
+            app "tscribe.app"
+
+            postflight_steps do
+              run "xattr",
+                  args:         ["-dr", "com.apple.quarantine", "{{{{appdir}}}}/tscribe.app"],
+                  must_succeed: false
+            end
+
+            uninstall quit: "com.tscribe.app"
+
+            zap trash: [
+              "~/Library/Application Support/tscribe",
+              "~/Library/Caches/com.tscribe.app",
+              "~/Library/Preferences/com.tscribe.app.plist",
+              "~/Library/Saved Application State/com.tscribe.app.savedState",
+            ]
+          end
+          '''
+          Path("homebrew-tap/Casks/tscribe.rb").write_text(cask_content)
+
+          readme_path = Path("homebrew-tap/README.md")
+          readme = readme_path.read_text()
+          if "tscribe" not in readme.lower():
+              marker = "## Installation"
+              entry = "- **tscribe**: `brew install --cask mgabs/tap/tscribe`\n"
+              if marker in readme:
+                  readme = readme.replace(f"\n{marker}", f"{entry}\n{marker}", 1)
+              else:
+                  readme = readme.rstrip() + f"\n{entry}"
+              readme_path.write_text(readme)
+          PY
+      - name: Validate tap structure
+        working-directory: homebrew-tap
+        run: ruby test/test_tap.rb
+      - name: Commit and push homebrew-tap
+        working-directory: homebrew-tap
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/tscribe.rb README.md
+          if git diff --cached --quiet; then
+            echo "No changes to homebrew-tap."
+            exit 0
+          fi
+          git commit -m "chore(cask): bump tscribe to ${VERSION}"
+          git push

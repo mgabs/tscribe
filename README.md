@@ -45,8 +45,16 @@ The following requirements apply to the Python CLI:
 
 ## Installation
 
+### macOS App (Homebrew)
+
 ```bash
-git clone https://github.com/johnrobinsn/tscribe.git && cd tscribe
+brew install --cask mgabs/tap/tscribe
+```
+
+### CLI (from source)
+
+```bash
+git clone https://github.com/mgabs/tscribe.git && cd tscribe
 uv sync
 
 # Run from the project directory
@@ -480,20 +488,15 @@ Python checks on Apple Silicon and Intel Macs. Dependency resolution is locked
 with `uv.lock`. Tests use synthetic audio and do not need capture permissions or
 Whisper model downloads.
 
-After committing/pushing the release changes, publish version 2.3.1 by pushing
-its matching tag:
+Merging a version bump to `main` (matching `pyproject.toml` and `src/tscribe/__init__.py`)
+automatically triggers the release pipeline when `v<version>` is not yet published.
 
-```bash
-git tag -a v2.3.1 -m "tscribe 2.3.1"
-git push origin v2.3.1
-```
-
-The release workflow rejects mismatched versions, waits for checks, builds the
+The release workflow validates version parity, waits for checks, builds the
 CLI packages and both Mac architectures, verifies packaged workers/signatures,
-and publishes a GitHub release with SHA256 checksums. Only the publishing job
-has write permission. It uses the repository's automatic `GITHUB_TOKEN`; no
-publishing token is needed. macOS packages are ad-hoc signed; Apple notarization
-still requires the developer credentials described in [the Mac app guide](docs/macos-app.md).
+publishes a GitHub release with SHA256 checksums using `GITHUB_TOKEN`, and
+updates `mgabs/homebrew-tap` using `HOMEBREW_TAP_TOKEN`. macOS packages are
+ad-hoc signed; Apple notarization still requires the developer credentials
+described in [the Mac app guide](docs/macos-app.md).
 
 Mutation testing uses [mutmut](https://mutmut.readthedocs.io/en/latest/) to
 deliberately alter code and check whether tests detect the changed behavior.
@@ -547,3 +550,19 @@ src/tscribe/
     ├── pipewire_recorder.py     # PipeWire capture (Linux)
     └── mock_recorder.py         # Test mock
 ```
+
+---
+
+## Donating & Humanitarian Support
+
+tscribe is free and open-source. If you wish to express gratitude, please consider donating to humanitarian relief organizations providing food, water, medical aid, and shelter to families in Gaza and Palestine:
+
+- **[UNRWA](https://www.unrwa.org)** — UN Relief and Works Agency for Palestine Refugees
+- **[Palestine Children's Relief Fund (PCRF)](https://www.pcrf.net)**
+- **[Palestine Red Crescent Society](https://www.palestinercs.org)**
+- **[Medical Aid for Palestinians (MAP)](https://www.map.org.uk)**
+- **[Anera](https://www.anera.org)**
+- **[Médecins Sans Frontières (MSF)](https://www.msf.org)**
+- **[International Committee of the Red Cross (ICRC)](https://www.icrc.org)**
+- **[UNICEF](https://www.unicef.org)**
+- **[World Food Programme (WFP)](https://www.wfp.org)**

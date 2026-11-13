@@ -80,8 +80,6 @@ package: app
 	ditto -c -k --sequesterRsrc --keepParent "$(APP)" "$$archive_stage/release.zip"; \
 	unzip -tq "$$archive_stage/release.zip"; \
 	mv "$$archive_stage/release.zip" "$(ARCHIVE)"; \
-	# copy zip with versioned name for CI pattern
-	cp "$(ARCHIVE)" "dist/tscribe-$(VERSION)-macos-${ARCH}.zip" && \
 	cp "$(ARCHIVE)" "dist/tscribe-macos-${ARCH}.zip"
 
 checksums:

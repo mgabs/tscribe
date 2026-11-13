@@ -25,3 +25,4 @@ macos/.build/
 macos/.swiftpm/
 
 .worktrees/
+.serena/
