@@ -6,7 +6,7 @@ root = Path(SPECPATH).parents[1]
 datas = collect_data_files('faster_whisper')
 datas += [(str(root / 'vendor/speexdsp' / name), 'licenses/SpeexDSP') for name in ('COPYING', 'THIRD_PARTY_NOTICES.txt')]
 datas.append((str(root / 'build/nemotron'), 'nemotron'))
-for package in ('faster-whisper', 'ctranslate2', 'huggingface-hub', 'tokenizers', 'tqdm'):
+for package in ('tscribe', 'faster-whisper', 'ctranslate2', 'huggingface-hub', 'tokenizers', 'tqdm'):
     datas += copy_metadata(package)
 a = Analysis(
     [str(root / 'packaging/macos/worker_entrypoint.py')],
