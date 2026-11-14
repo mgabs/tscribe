@@ -35,4 +35,3 @@ DMG creation MUST use macOS built-in `hdiutil` without requiring Homebrew or thi
 - **GIVEN** a stock `macos-15` or `macos-15-intel` runner without `create-dmg` installed
 - **WHEN** `make package` runs
 - **THEN** the `.dmg` is created and verified using only `hdiutil` and POSIX shell utilities
-

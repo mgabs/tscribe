@@ -43,4 +43,3 @@ Resolving `tscribe.__version__` MUST NOT spawn subprocesses or perform network c
 - **GIVEN** `tscribe` is imported in Python
 - **WHEN** `__version__` is evaluated
 - **THEN** it completes purely in-process using `importlib.metadata` or local file read of `pyproject.toml`
-
