@@ -8,6 +8,7 @@ VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
 ARCH := $(shell uname -m)
 APP := dist/tscribe.app
 ARCHIVE := dist/tscribe-$(VERSION)-macos-$(ARCH).zip
+DMG := dist/tscribe-$(VERSION)-macos-$(ARCH).dmg
 
 .PHONY: help setup pre-commit lint test test-clock test-swift test-regressions test-menu-bar audio-dsp check cli app package checksums dist install run clean-dist clean
 
@@ -22,7 +23,7 @@ help:
 	  'make cli         Build the Python wheel and source distribution' \
 	  'make audio-dsp   Build the local speaker echo cancellation library' \
 	  'make app         Build the self-contained macOS app' \
-	  'make package     Build and zip the macOS app' \
+	  'make package     Build, zip, and create a DMG for the macOS app' \
 	  'make dist        Replace dist with the current release and checksums' \
 	  'make install     Build and install the app in ~/Applications' \
 	  'make run         Open the installed app or local build' \
@@ -80,10 +81,17 @@ package: app
 	ditto -c -k --sequesterRsrc --keepParent "$(APP)" "$$archive_stage/release.zip"; \
 	unzip -tq "$$archive_stage/release.zip"; \
 	mv "$$archive_stage/release.zip" "$(ARCHIVE)"; \
-	cp "$(ARCHIVE)" "dist/tscribe-macos-${ARCH}.zip"
+	cp "$(ARCHIVE)" "dist/tscribe-macos-${ARCH}.zip"; \
+	mkdir -p "$$archive_stage/dmg"; \
+	ditto "$(APP)" "$$archive_stage/dmg/tscribe.app"; \
+	ln -s /Applications "$$archive_stage/dmg/Applications"; \
+	hdiutil create -volname "tscribe" -srcfolder "$$archive_stage/dmg" -ov -format UDZO "$$archive_stage/release.dmg"; \
+	hdiutil verify "$$archive_stage/release.dmg"; \
+	mv "$$archive_stage/release.dmg" "$(DMG)"; \
+	cp "$(DMG)" "dist/tscribe-macos-${ARCH}.dmg"
 
 checksums:
-	cd dist && shasum -a 256 ./*.whl ./*.tar.gz ./*.zip > SHA256SUMS
+	cd dist && shasum -a 256 ./*.whl ./*.tar.gz ./*.zip ./*.dmg > SHA256SUMS
 
 # Keep cleanup and builds sequential, including when invoked with make -j.
 dist:
