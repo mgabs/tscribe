@@ -88,3 +88,23 @@ def test_native_install_preserves_previous_app(tmp_path, monkeypatch):
     assert len(backups) == 1
     assert (backups[0] / 'previous').is_file()
     assert not list(installed.parent.glob('.tscribe-install-*'))
+
+
+def test_resolve_version_prefers_installed_metadata(monkeypatch):
+    import tscribe
+
+    monkeypatch.setattr(tscribe, 'version', lambda name: '9.9.9' if name == 'tscribe' else '0.0.0')
+    assert tscribe._resolve_version() == '9.9.9'
+
+
+def test_resolve_version_falls_back_to_pyproject(monkeypatch):
+    from importlib.metadata import PackageNotFoundError
+    import tscribe
+    from tscribe.config import tomllib
+
+    def missing(_name):
+        raise PackageNotFoundError('tscribe')
+
+    monkeypatch.setattr(tscribe, 'version', missing)
+    expected = tomllib.loads((Path(__file__).parents[1] / 'pyproject.toml').read_text())['project']['version']
+    assert tscribe._resolve_version() == expected

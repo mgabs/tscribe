@@ -86,8 +86,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            developer-dir: /Applications/Xcode_15.4.app/Contents/Developer
+          - os: macos-15
+            developer-dir: /Applications/Xcode.app/Contents/Developer
           - os: macos-15-intel
             developer-dir: /Applications/Xcode.app/Contents/Developer
     env:
